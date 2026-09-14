@@ -20,12 +20,6 @@ import {
   ArrowRight,
 } from 'lucide-react';
 
-// ------------------------------------------------------------------
-// TODO: ganti semua data dummy di bawah ini dengan data asli dari
-// API/backend (misalnya /api/transaksi/summary, /api/transaksi/grafik,
-// /api/produk/terlaris).
-// ------------------------------------------------------------------
-
 type ProdukTerlaris = {
   no: number;
   nama: string;

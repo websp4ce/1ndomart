@@ -1,7 +1,8 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 import SidebarKasir from '../../components/SidebarKasir';
 import {
   Search,
@@ -12,14 +13,9 @@ import {
   CreditCard,
   ShoppingCart,
   Bell,
-  Sun,
   ShieldCheck,
   Trash2,
-  LayoutGrid,
-  Coffee,
-  UtensilsCrossed,
-  Cookie,
-  Home as HomeIcon,
+  ChevronRight,
 } from 'lucide-react';
 
 type Kategori = 'Semua' | 'Minuman' | 'Makanan' | 'Snack' | 'Kebutuhan Rumah';
@@ -32,15 +28,40 @@ type Produk = {
   gambar: string;
 };
 
-type ItemKeranjang = Produk & { qty: number };
+// Item di keranjang. Dibuat generik (id/nama/harga/gambar/qty) supaya
+// bentuknya SAMA dengan yang dipakai di halaman scan barcode — jadi
+// walau disimpan/dibaca dari dua file berbeda, datanya tetap nyambung.
+type ItemKeranjang = {
+  id: string;
+  nama: string;
+  harga: number;
+  gambar: string;
+  qty: number;
+};
 
-const kategoriList: { id: Kategori; Icon: typeof LayoutGrid }[] = [
-  { id: 'Semua', Icon: LayoutGrid },
-  { id: 'Minuman', Icon: Coffee },
-  { id: 'Makanan', Icon: UtensilsCrossed },
-  { id: 'Snack', Icon: Cookie },
-  { id: 'Kebutuhan Rumah', Icon: HomeIcon },
-];
+// Kunci localStorage ini HARUS SAMA PERSIS dengan yang dipakai di
+// halaman scan barcode, supaya keranjangnya jadi satu keranjang yang sama.
+const KERANJANG_KEY = 'keranjangAktif';
+
+function bacaKeranjang(): ItemKeranjang[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(KERANJANG_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function simpanKeranjang(items: ItemKeranjang[]) {
+  try {
+    localStorage.setItem(KERANJANG_KEY, JSON.stringify(items));
+  } catch {
+    // kalau localStorage gagal (mis. mode privat browser), biarkan saja
+  }
+}
+
+const kategoriList: Kategori[] = ['Semua', 'Minuman', 'Makanan', 'Snack', 'Kebutuhan Rumah'];
 
 const produkDummy: Produk[] = [
   { id: 'p1', nama: 'Indomie Goreng', harga: 3000, kategori: 'Makanan', gambar: '/produk/indomie-goreng.png' },
@@ -58,13 +79,42 @@ function formatRupiah(angka: number): string {
 }
 
 export default function TransaksiPenjualanPage() {
+  const router = useRouter();
   const [query, setQuery] = useState('');
   const [kategoriAktif, setKategoriAktif] = useState<Kategori>('Semua');
-  const [keranjang, setKeranjang] = useState<ItemKeranjang[]>([
-    { ...produkDummy[0], qty: 1 },
-    { ...produkDummy[1], qty: 2 },
-    { ...produkDummy[2], qty: 1 },
-  ]);
+  const [namaUser, setNamaUser] = useState('Kasir');
+  const [keranjang, setKeranjang] = useState<ItemKeranjang[]>([]);
+
+  const kategoriScrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('currentUser');
+      if (raw) {
+        const user = JSON.parse(raw);
+        if (user?.nama) setNamaUser(user.nama);
+      }
+    } catch {
+      // biarkan default "Kasir"
+    }
+  }, []);
+
+  // Muat keranjang yang sudah tersimpan (misal dari hasil scan barcode)
+  // begitu halaman transaksi dibuka.
+  useEffect(() => {
+    setKeranjang(bacaKeranjang());
+  }, []);
+
+  // Kalau keranjang diubah dari tab/halaman lain, ikut ter-update di sini.
+  useEffect(() => {
+    function handleStorage(e: StorageEvent) {
+      if (e.key === KERANJANG_KEY) {
+        setKeranjang(bacaKeranjang());
+      }
+    }
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, []);
 
   const produkTersaring = useMemo(() => {
     return produkDummy.filter((p) => {
@@ -79,20 +129,39 @@ export default function TransaksiPenjualanPage() {
     [keranjang]
   );
 
-  const tambahKeKeranjang = (produk: Produk) => {
+  // Bungkus setKeranjang supaya setiap kali keranjang berubah, otomatis
+  // ikut disimpan ke localStorage juga.
+  function ubahKeranjang(fn: (prev: ItemKeranjang[]) => ItemKeranjang[]) {
     setKeranjang((prev) => {
+      const next = fn(prev);
+      simpanKeranjang(next);
+      return next;
+    });
+  }
+
+  const tambahKeKeranjang = (produk: Produk) => {
+    ubahKeranjang((prev) => {
       const sudahAda = prev.find((item) => item.id === produk.id);
       if (sudahAda) {
         return prev.map((item) =>
           item.id === produk.id ? { ...item, qty: item.qty + 1 } : item
         );
       }
-      return [...prev, { ...produk, qty: 1 }];
+      return [
+        ...prev,
+        {
+          id: produk.id,
+          nama: produk.nama,
+          harga: produk.harga,
+          gambar: produk.gambar,
+          qty: 1,
+        },
+      ];
     });
   };
 
   const ubahQty = (id: string, delta: number) => {
-    setKeranjang((prev) =>
+    ubahKeranjang((prev) =>
       prev
         .map((item) =>
           item.id === id ? { ...item, qty: Math.max(1, item.qty + delta) } : item
@@ -102,10 +171,20 @@ export default function TransaksiPenjualanPage() {
   };
 
   const hapusItem = (id: string) => {
-    setKeranjang((prev) => prev.filter((item) => item.id !== id));
+    ubahKeranjang((prev) => prev.filter((item) => item.id !== id));
   };
 
-  const hapusSemua = () => setKeranjang([]);
+  const hapusSemua = () => ubahKeranjang(() => []);
+
+  const geserKategori = () => {
+    kategoriScrollRef.current?.scrollBy({ left: 180, behavior: 'smooth' });
+  };
+
+  const handleBayarSekarang = () => {
+    // Keranjang sudah otomatis tersimpan tiap kali berubah, jadi di sini
+    // tinggal lanjut navigasi ke halaman pembayaran.
+    router.push('/pembayaran');
+  };
 
   return (
     <div className="wrapper">
@@ -122,19 +201,15 @@ export default function TransaksiPenjualanPage() {
           </div>
 
           <div className="topbar-right">
-            <button className="icon-btn" aria-label="Tema">
-              <Sun size={18} strokeWidth={1.8} color="#4b5875" />
-            </button>
-
             <button className="icon-btn" aria-label="Notifikasi">
               <Bell size={18} strokeWidth={1.8} color="#4b5875" />
               <span className="dot" />
             </button>
 
             <div className="user-block">
-              <div className="avatar">A</div>
+              <div className="avatar">{namaUser.charAt(0).toUpperCase()}</div>
               <div>
-                <div className="user-name">Aulia Rahma</div>
+                <div className="user-name">{namaUser}</div>
                 <div className="user-role">Kasir</div>
               </div>
             </div>
@@ -185,18 +260,28 @@ export default function TransaksiPenjualanPage() {
                   </div>
                 </div>
 
-                <div className="kategori-row">
-                  {kategoriList.map(({ id, Icon }) => (
-                    <button
-                      key={id}
-                      type="button"
-                      className={`kategori-pill ${kategoriAktif === id ? 'aktif' : ''}`}
-                      onClick={() => setKategoriAktif(id)}
-                    >
-                      <Icon size={14} strokeWidth={2} />
-                      {id}
-                    </button>
-                  ))}
+                <div className="kategori-row-wrapper">
+                  <div className="kategori-row" ref={kategoriScrollRef}>
+                    {kategoriList.map((id) => (
+                      <button
+                        key={id}
+                        type="button"
+                        className={`kategori-pill ${kategoriAktif === id ? 'aktif' : ''}`}
+                        onClick={() => setKategoriAktif(id)}
+                      >
+                        {id}
+                      </button>
+                    ))}
+                  </div>
+
+                  <button
+                    type="button"
+                    className="kategori-scroll-btn"
+                    onClick={geserKategori}
+                    aria-label="Geser kategori"
+                  >
+                    <ChevronRight size={16} strokeWidth={2.2} color="#4b5875" />
+                  </button>
                 </div>
 
                 <div className="produk-grid">
@@ -320,6 +405,7 @@ export default function TransaksiPenjualanPage() {
                   type="button"
                   className="btn-bayar"
                   disabled={keranjang.length === 0}
+                  onClick={handleBayarSekarang}
                 >
                   <CreditCard size={16} strokeWidth={2} />
                   Bayar Sekarang
@@ -390,16 +476,6 @@ export default function TransaksiPenjualanPage() {
 
         .topbar-search input::placeholder {
           color: #a5aec2;
-        }
-
-        .shortcut {
-          font-size: 10.5px;
-          font-weight: 700;
-          color: #a5aec2;
-          background: #ffffff;
-          border: 1px solid #e6ebf3;
-          border-radius: 6px;
-          padding: 2px 6px;
         }
 
         .topbar-right {
@@ -577,31 +653,67 @@ export default function TransaksiPenjualanPage() {
           color: #a5aec2;
         }
 
-        .kategori-row {
+        .kategori-row-wrapper {
           display: flex;
+          align-items: center;
           gap: 8px;
-          flex-wrap: wrap;
           margin-bottom: 20px;
         }
 
-        .kategori-pill {
+        .kategori-row {
           display: flex;
-          align-items: center;
-          gap: 6px;
+          gap: 8px;
+          overflow-x: auto;
+          flex: 1;
+          min-width: 0;
+          scrollbar-width: none;
+        }
+
+        .kategori-row::-webkit-scrollbar {
+          display: none;
+        }
+
+        .kategori-pill {
+          flex-shrink: 0;
           background: #ffffff;
-          border: 1px solid #e6ebf3;
-          border-radius: 20px;
-          padding: 8px 16px;
+          border: 1px solid #e2e6ee;
+          border-radius: 999px;
+          padding: 9px 18px;
           font-size: 12.5px;
-          font-weight: 700;
-          color: #4b5875;
+          font-weight: 600;
+          color: #5a6478;
           cursor: pointer;
+          white-space: nowrap;
+          transition: all 0.15s ease;
+        }
+
+        .kategori-pill:hover {
+          border-color: #2f80ed;
+          color: #2f80ed;
         }
 
         .kategori-pill.aktif {
           background: #2f80ed;
           border-color: #2f80ed;
           color: #ffffff;
+        }
+
+        .kategori-scroll-btn {
+          flex-shrink: 0;
+          width: 30px;
+          height: 30px;
+          border-radius: 50%;
+          border: 1px solid #e2e6ee;
+          background: #ffffff;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          transition: border-color 0.15s ease;
+        }
+
+        .kategori-scroll-btn:hover {
+          border-color: #2f80ed;
         }
 
         .produk-grid {
