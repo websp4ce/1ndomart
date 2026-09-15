@@ -1,65 +1,37 @@
 import { NextResponse } from 'next/server';
 import db from '@/lib/db';
 
-// ======================================================
-// MEMASTIKAN TABEL MEMBER ADA
-// ======================================================
-
-async function pastikanTabelMember() {
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS member (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      nama VARCHAR(100) NOT NULL,
-      telepon VARCHAR(20) NOT NULL,
-      poin INT NOT NULL DEFAULT 0,
-      tanggal DATE NOT NULL
-    )
-  `);
-}
-
-
-// ======================================================
-// GET - AMBIL DATA MEMBER
-// ======================================================
-
 export async function GET(req: Request) {
   try {
-    const { searchParams } = new URL(req.url);
-    const menu = searchParams.get('menu');
+    const menu = new URL(req.url).searchParams.get('menu');
 
-    if (menu !== 'member') {
+    const tabel: Record<string, string> = {
+      promo: 'promo',
+      member: 'member',
+      retur: 'retur_penjualan',
+      shift: 'shift_kasir',
+      laporan: 'laporan_penjualan',
+    };
+
+    if (!menu || !tabel[menu]) {
       return NextResponse.json(
         { error: 'Menu tidak valid' },
         { status: 400 }
       );
     }
 
-    // Pastikan tabel tersedia
-    await pastikanTabelMember();
-
-    const [rows] = await db.execute(`
-      SELECT
-        id,
-        nama,
-        telepon,
-        poin,
-        tanggal
-      FROM member
-      ORDER BY id DESC
-    `);
+    const [rows] = await db.execute(
+      `SELECT * FROM ${tabel[menu]} ORDER BY id DESC`
+    );
 
     return NextResponse.json(rows);
-
   } catch (error) {
-    console.error('GET MEMBER ERROR:', error);
+    console.error('GET ERROR:', error);
 
     return NextResponse.json(
       {
-        error: 'Gagal mengambil data member',
-        detail:
-          error instanceof Error
-            ? error.message
-            : String(error),
+        error: 'Gagal mengambil data',
+        detail: error instanceof Error ? error.message : String(error),
       },
       { status: 500 }
     );
@@ -68,49 +40,28 @@ export async function GET(req: Request) {
 
 
 // ======================================================
-// POST - TAMBAH MEMBER
+// MEMBER
 // ======================================================
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
 
-    const {
-      menu,
-      nama,
-      telepon,
-      poin,
-      tanggal,
-    } = body;
-
-    if (menu !== 'member') {
+    if (body.menu !== 'member') {
       return NextResponse.json(
         { error: 'Menu tidak valid' },
         { status: 400 }
       );
     }
 
-    if (!nama?.trim()) {
+    const { nama, telepon, poin, tanggal } = body;
+
+    if (!nama?.trim() || !telepon?.trim()) {
       return NextResponse.json(
-        { error: 'Nama member harus diisi' },
+        { error: 'Nama dan nomor telepon wajib diisi' },
         { status: 400 }
       );
     }
-
-    if (!telepon?.trim()) {
-      return NextResponse.json(
-        { error: 'Nomor telepon harus diisi' },
-        { status: 400 }
-      );
-    }
-
-    await pastikanTabelMember();
-
-    const nilaiPoin = Number(poin) || 0;
-
-    const tanggalMember =
-      tanggal ||
-      new Date().toISOString().split('T')[0];
 
     const [result] = await db.execute(
       `
@@ -121,30 +72,23 @@ export async function POST(req: Request) {
       [
         nama.trim(),
         telepon.trim(),
-        nilaiPoin,
-        tanggalMember,
+        Number(poin) || 0,
+        tanggal || new Date().toISOString().split('T')[0],
       ]
     );
 
-    return NextResponse.json(
-      {
-        success: true,
-        message: 'Member berhasil ditambahkan',
-        id: (result as any).insertId,
-      },
-      { status: 201 }
-    );
-
+    return NextResponse.json({
+      success: true,
+      message: 'Member berhasil ditambahkan',
+      id: (result as any).insertId,
+    });
   } catch (error) {
-    console.error('POST MEMBER ERROR:', error);
+    console.error('POST ERROR:', error);
 
     return NextResponse.json(
       {
         error: 'Gagal menambahkan member',
-        detail:
-          error instanceof Error
-            ? error.message
-            : String(error),
+        detail: error instanceof Error ? error.message : String(error),
       },
       { status: 500 }
     );
@@ -152,67 +96,36 @@ export async function POST(req: Request) {
 }
 
 
-// ======================================================
-// PUT - EDIT MEMBER
-// ======================================================
-
 export async function PUT(req: Request) {
   try {
     const body = await req.json();
 
-    const {
-      menu,
-      id,
-      nama,
-      telepon,
-      poin,
-    } = body;
-
-    if (menu !== 'member') {
+    if (body.menu !== 'member') {
       return NextResponse.json(
         { error: 'Menu tidak valid' },
         { status: 400 }
       );
     }
 
-    if (!id) {
+    const { id, nama, telepon, poin } = body;
+
+    if (!id || !nama?.trim() || !telepon?.trim()) {
       return NextResponse.json(
-        { error: 'ID member tidak ditemukan' },
+        { error: 'Data member belum lengkap' },
         { status: 400 }
       );
     }
-
-    if (!nama?.trim()) {
-      return NextResponse.json(
-        { error: 'Nama member harus diisi' },
-        { status: 400 }
-      );
-    }
-
-    if (!telepon?.trim()) {
-      return NextResponse.json(
-        { error: 'Nomor telepon harus diisi' },
-        { status: 400 }
-      );
-    }
-
-    await pastikanTabelMember();
-
-    const nilaiPoin = Number(poin) || 0;
 
     const [result] = await db.execute(
       `
         UPDATE member
-        SET
-          nama = ?,
-          telepon = ?,
-          poin = ?
+        SET nama = ?, telepon = ?, poin = ?
         WHERE id = ?
       `,
       [
         nama.trim(),
         telepon.trim(),
-        nilaiPoin,
+        Number(poin) || 0,
         id,
       ]
     );
@@ -228,17 +141,13 @@ export async function PUT(req: Request) {
       success: true,
       message: 'Member berhasil diperbarui',
     });
-
   } catch (error) {
-    console.error('PUT MEMBER ERROR:', error);
+    console.error('PUT ERROR:', error);
 
     return NextResponse.json(
       {
         error: 'Gagal memperbarui member',
-        detail:
-          error instanceof Error
-            ? error.message
-            : String(error),
+        detail: error instanceof Error ? error.message : String(error),
       },
       { status: 500 }
     );
@@ -246,40 +155,19 @@ export async function PUT(req: Request) {
 }
 
 
-// ======================================================
-// DELETE - HAPUS MEMBER
-// ======================================================
-
 export async function DELETE(req: Request) {
   try {
-    const body = await req.json();
+    const { menu, id } = await req.json();
 
-    const {
-      menu,
-      id,
-    } = body;
-
-    if (menu !== 'member') {
+    if (menu !== 'member' || !id) {
       return NextResponse.json(
-        { error: 'Menu tidak valid' },
+        { error: 'Data tidak valid' },
         { status: 400 }
       );
     }
-
-    if (!id) {
-      return NextResponse.json(
-        { error: 'ID member tidak ditemukan' },
-        { status: 400 }
-      );
-    }
-
-    await pastikanTabelMember();
 
     const [result] = await db.execute(
-      `
-        DELETE FROM member
-        WHERE id = ?
-      `,
+      `DELETE FROM member WHERE id = ?`,
       [id]
     );
 
@@ -294,17 +182,13 @@ export async function DELETE(req: Request) {
       success: true,
       message: 'Member berhasil dihapus',
     });
-
   } catch (error) {
-    console.error('DELETE MEMBER ERROR:', error);
+    console.error('DELETE ERROR:', error);
 
     return NextResponse.json(
       {
         error: 'Gagal menghapus member',
-        detail:
-          error instanceof Error
-            ? error.message
-            : String(error),
+        detail: error instanceof Error ? error.message : String(error),
       },
       { status: 500 }
     );
