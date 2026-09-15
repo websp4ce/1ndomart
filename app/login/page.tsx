@@ -132,7 +132,7 @@ export default function LoginPage() {
         return;
       }
 
-      // Simpan sesi user supaya bisa dipakai di header halaman-halaman berikutnya
+      // Simpan data user
       localStorage.setItem(
         'indomart_user',
         JSON.stringify({
@@ -142,6 +142,14 @@ export default function LoginPage() {
         })
       );
 
+      // Simpan juga role agar mudah digunakan halaman lain
+      localStorage.setItem('login', akun.role);
+      localStorage.setItem('email', akun.email);
+
+      // Beri tahu komponen lain bahwa status login berubah
+      window.dispatchEvent(new Event('login'));
+
+      // Redirect sesuai role
       router.push(tujuanRedirect[akun.role]);
     }, 600);
   }
@@ -225,24 +233,24 @@ export default function LoginPage() {
               }
             />
 
-     <span
-  className="field-toggle"
-  onClick={() =>
-    setTampilkanPassword(!tampilkanPassword)
-  }
->
-  {tampilkanPassword ? (
-    <Eye
-      size={17}
-      strokeWidth={1.8}
-    />
-  ) : (
-    <EyeOff
-      size={17}
-      strokeWidth={1.8}
-    />
-  )}
-</span>
+            <span
+              className="field-toggle"
+              onClick={() =>
+                setTampilkanPassword(!tampilkanPassword)
+              }
+            >
+              {tampilkanPassword ? (
+                <Eye
+                  size={17}
+                  strokeWidth={1.8}
+                />
+              ) : (
+                <EyeOff
+                  size={17}
+                  strokeWidth={1.8}
+                />
+              )}
+            </span>
           </div>
 
           <div className="role-section">
@@ -468,15 +476,16 @@ export default function LoginPage() {
         }
 
         .field input::-ms-reveal,
-.field input::-ms-clear {
-  display: none;
-}
+        .field input::-ms-clear {
+          display: none;
+        }
 
-.field input::-webkit-textfield-decoration-container,
-.field input::-webkit-credentials-auto-fill-button {
-  visibility: hidden;
-  display: none !important;
-}
+        .field input::-webkit-textfield-decoration-container,
+        .field input::-webkit-credentials-auto-fill-button {
+          visibility: hidden;
+          display: none !important;
+        }
+
         .field-icon {
           color: #123f91;
           flex-shrink: 0;
