@@ -4,17 +4,35 @@ import type { RowDataPacket } from 'mysql2';
 
 // GET /api/products/[barcode]
 // Dipakai di halaman Scan Barcode buat gantiin daftarProduk.find(...).
+//
+// PENTING: mulai Next.js 15, "params" di route handler berbentuk
+// Promise dan HARUS di-await. Kalau tidak, params.barcode akan
+// undefined, dan query jadi "WHERE p.barcode = undefined" — cocok
+// tidak dengan produk manapun, walau barcode-nya sendiri valid.
 export async function GET(
   request: Request,
-  { params }: { params: { barcode: string } }
+  { params }: { params: Promise<{ barcode: string }> }
 ) {
   try {
+    const { barcode } = await params;
+    const barcodeBersih = barcode?.trim();
+
+    if (!barcodeBersih) {
+      return NextResponse.json(
+        { message: 'Barcode tidak valid' },
+        { status: 400 }
+      );
+    }
+
+    // LEFT JOIN (bukan JOIN/INNER JOIN) supaya produk tetap ditemukan
+    // walau category_id-nya NULL atau tidak cocok dengan baris manapun
+    // di tabel categories.
     const [rows] = await pool.query<RowDataPacket[]>(
       `SELECT p.barcode AS kode, p.nama, p.harga, p.stok, p.gambar, c.nama AS kategori
        FROM products p
-       JOIN categories c ON p.category_id = c.id
+       LEFT JOIN categories c ON p.category_id = c.id
        WHERE p.barcode = ?`,
-      [params.barcode]
+      [barcodeBersih]
     );
 
     if (rows.length === 0) {

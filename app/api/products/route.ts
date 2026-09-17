@@ -3,9 +3,25 @@ import pool from '@/lib/db';
 import type { RowDataPacket, ResultSetHeader } from 'mysql2';
 
 // GET /api/products
-// Dipakai di halaman Transaksi buat gantiin produkDummy.
-export async function GET() {
+// GET /api/products?cari=laptop  <-- baru: dipakai autocomplete di form Transfer Stok
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const cari = searchParams.get('cari');
+
   try {
+    if (cari) {
+      // Mode pencarian ringkas, buat dropdown/autocomplete
+      const [rows] = await pool.query<RowDataPacket[]>(
+        `SELECT barcode AS id, nama FROM products
+         WHERE nama LIKE ? OR barcode LIKE ?
+         ORDER BY nama ASC
+         LIMIT 10`,
+        [`%${cari}%`, `%${cari}%`],
+      );
+      return NextResponse.json(rows);
+    }
+
+    // Mode lengkap (perilaku lama, dipakai halaman Transaksi)
     const [rows] = await pool.query<RowDataPacket[]>(
       `SELECT p.barcode AS id, p.nama, p.harga, p.stok, p.gambar, c.nama AS kategori
        FROM products p
@@ -39,7 +55,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // 1. Cek kategori sudah ada atau belum
     const [existingCategory] = await pool.query<RowDataPacket[]>(
       'SELECT id FROM categories WHERE nama = ?',
       [kategori]
@@ -50,7 +65,6 @@ export async function POST(request: Request) {
     if (existingCategory.length > 0) {
       categoryId = existingCategory[0].id;
     } else {
-      // Kategori baru -> insert dulu ke tabel categories
       const [insertCategory] = await pool.query<ResultSetHeader>(
         'INSERT INTO categories (nama) VALUES (?)',
         [kategori]
@@ -58,7 +72,6 @@ export async function POST(request: Request) {
       categoryId = insertCategory.insertId;
     }
 
-    // 2. Simpan produknya dengan category_id yang sudah pasti ada
     await pool.query(
       `INSERT INTO products (barcode, nama, harga, stok, category_id, gambar)
        VALUES (?, ?, ?, ?, ?, ?)`,

@@ -1,7 +1,4 @@
 import mysql from 'mysql2/promise';
-
-// Connection pool — dipakai bareng oleh semua API route, jadi tidak
-// buka-tutup koneksi baru tiap request (lebih hemat & cepat).
 const pool = mysql.createPool({
   host: process.env.DB_HOST || 'localhost',
   user: process.env.DB_USER || 'root',

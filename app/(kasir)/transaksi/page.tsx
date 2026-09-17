@@ -18,14 +18,17 @@ import {
   ChevronRight,
 } from 'lucide-react';
 
-type Kategori = 'Semua' | 'Minuman' | 'Makanan' | 'Snack' | 'Kebutuhan Rumah';
-
 type Produk = {
-  id: string;
+  id: string; // barcode
   nama: string;
   harga: number;
-  kategori: Kategori;
+  kategori: string;
   gambar: string;
+};
+
+type Kategori = {
+  id: number;
+  nama: string;
 };
 
 // Item di keranjang. Dibuat generik (id/nama/harga/gambar/qty) supaya
@@ -42,6 +45,10 @@ type ItemKeranjang = {
 // Kunci localStorage ini HARUS SAMA PERSIS dengan yang dipakai di
 // halaman scan barcode, supaya keranjangnya jadi satu keranjang yang sama.
 const KERANJANG_KEY = 'keranjangAktif';
+
+// Kunci ini HARUS SAMA dengan yang dipakai halaman Login
+// (localStorage.setItem('indomart_user', ...)).
+const USER_KEY = 'indomart_user';
 
 function bacaKeranjang(): ItemKeranjang[] {
   if (typeof window === 'undefined') return [];
@@ -61,35 +68,38 @@ function simpanKeranjang(items: ItemKeranjang[]) {
   }
 }
 
-const kategoriList: Kategori[] = ['Semua', 'Minuman', 'Makanan', 'Snack', 'Kebutuhan Rumah'];
-
-const produkDummy: Produk[] = [
-  { id: 'p1', nama: 'Indomie Goreng', harga: 3000, kategori: 'Makanan', gambar: '/produk/indomie-goreng.png' },
-  { id: 'p2', nama: 'Aqua 600ml', harga: 2500, kategori: 'Minuman', gambar: '/produk/aqua-600ml.png' },
-  { id: 'p3', nama: 'Roma Malkist Abon', harga: 5000, kategori: 'Snack', gambar: '/produk/roma-malkist.png' },
-  { id: 'p4', nama: 'Coca-Cola 1.5L', harga: 12000, kategori: 'Minuman', gambar: '/produk/coca-cola-1.5l.png' },
-  { id: 'p5', nama: 'Tango', harga: 8500, kategori: 'Snack', gambar: '/produk/tango.png' },
-  { id: 'p6', nama: 'Susu Ultra Milk', harga: 11000, kategori: 'Minuman', gambar: '/produk/susu-ultra.png' },
-  { id: 'p7', nama: 'Mie Sedaap Goreng', harga: 3500, kategori: 'Makanan', gambar: '/produk/mie-sedaap.png' },
-  { id: 'p8', nama: 'Beng-Beng', harga: 2500, kategori: 'Snack', gambar: '/produk/beng-beng.png' },
-];
-
 function formatRupiah(angka: number): string {
   return 'Rp ' + angka.toLocaleString('id-ID');
+}
+
+// Jaga-jaga kalau data gambar dari database formatnya salah
+// (misal cuma "kingkong.png" tanpa "/" di depan, atau kosong).
+function normalisasiGambar(src: string): string {
+  if (!src) return '/placeholder.png';
+  if (src.startsWith('/') || src.startsWith('http://') || src.startsWith('https://')) {
+    return src;
+  }
+  return `/${src}`;
 }
 
 export default function TransaksiPenjualanPage() {
   const router = useRouter();
   const [query, setQuery] = useState('');
-  const [kategoriAktif, setKategoriAktif] = useState<Kategori>('Semua');
+  const [kategoriAktif, setKategoriAktif] = useState<string>('Semua');
   const [namaUser, setNamaUser] = useState('Kasir');
   const [keranjang, setKeranjang] = useState<ItemKeranjang[]>([]);
+
+  // Data dari API (dulu array dummy: produkDummy & kategoriList)
+  const [produkList, setProdukList] = useState<Produk[]>([]);
+  const [kategoriList, setKategoriList] = useState<Kategori[]>([]);
+  const [loadingProduk, setLoadingProduk] = useState(true);
+  const [errorMuat, setErrorMuat] = useState('');
 
   const kategoriScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     try {
-      const raw = localStorage.getItem('currentUser');
+      const raw = localStorage.getItem(USER_KEY);
       if (raw) {
         const user = JSON.parse(raw);
         if (user?.nama) setNamaUser(user.nama);
@@ -97,6 +107,37 @@ export default function TransaksiPenjualanPage() {
     } catch {
       // biarkan default "Kasir"
     }
+  }, []);
+
+  // Ambil produk & kategori dari API begitu halaman dibuka.
+  useEffect(() => {
+    async function muatData() {
+      setLoadingProduk(true);
+      setErrorMuat('');
+      try {
+        const [resProduk, resKategori] = await Promise.all([
+          fetch('/api/products'),
+          fetch('/api/categories'),
+        ]);
+
+        if (!resProduk.ok || !resKategori.ok) {
+          throw new Error('Gagal memuat data dari server');
+        }
+
+        const dataProduk: Produk[] = await resProduk.json();
+        const dataKategori: Kategori[] = await resKategori.json();
+
+        setProdukList(dataProduk);
+        setKategoriList(dataKategori);
+      } catch (err) {
+        console.error(err);
+        setErrorMuat('Gagal memuat produk/kategori. Pastikan server & database aktif.');
+      } finally {
+        setLoadingProduk(false);
+      }
+    }
+
+    muatData();
   }, []);
 
   // Muat keranjang yang sudah tersimpan (misal dari hasil scan barcode)
@@ -117,12 +158,12 @@ export default function TransaksiPenjualanPage() {
   }, []);
 
   const produkTersaring = useMemo(() => {
-    return produkDummy.filter((p) => {
+    return produkList.filter((p) => {
       const cocokKategori = kategoriAktif === 'Semua' || p.kategori === kategoriAktif;
       const cocokQuery = p.nama.toLowerCase().includes(query.toLowerCase());
       return cocokKategori && cocokQuery;
     });
-  }, [query, kategoriAktif]);
+  }, [produkList, query, kategoriAktif]);
 
   const total = useMemo(
     () => keranjang.reduce((sum, item) => sum + item.harga * item.qty, 0),
@@ -262,14 +303,22 @@ export default function TransaksiPenjualanPage() {
 
                 <div className="kategori-row-wrapper">
                   <div className="kategori-row" ref={kategoriScrollRef}>
-                    {kategoriList.map((id) => (
+                    <button
+                      type="button"
+                      className={`kategori-pill ${kategoriAktif === 'Semua' ? 'aktif' : ''}`}
+                      onClick={() => setKategoriAktif('Semua')}
+                    >
+                      Semua
+                    </button>
+
+                    {kategoriList.map((k) => (
                       <button
-                        key={id}
+                        key={k.id}
                         type="button"
-                        className={`kategori-pill ${kategoriAktif === id ? 'aktif' : ''}`}
-                        onClick={() => setKategoriAktif(id)}
+                        className={`kategori-pill ${kategoriAktif === k.nama ? 'aktif' : ''}`}
+                        onClick={() => setKategoriAktif(k.nama)}
                       >
-                        {id}
+                        {k.nama}
                       </button>
                     ))}
                   </div>
@@ -284,33 +333,43 @@ export default function TransaksiPenjualanPage() {
                   </button>
                 </div>
 
-                <div className="produk-grid">
-                  {produkTersaring.map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      className="produk-card"
-                      onClick={() => tambahKeKeranjang(p)}
-                    >
-                      <div className="produk-gambar">
-                        <Image
-                          src={p.gambar}
-                          alt={p.nama}
-                          fill
-                          sizes="120px"
-                          className="produk-gambar-img"
-                        />
-                      </div>
+                {loadingProduk && (
+                  <div className="produk-status">Memuat produk...</div>
+                )}
 
-                      <div className="produk-nama">{p.nama}</div>
-                      <div className="produk-harga">{formatRupiah(p.harga)}</div>
-                    </button>
-                  ))}
+                {!loadingProduk && errorMuat && (
+                  <div className="produk-status produk-error">{errorMuat}</div>
+                )}
 
-                  {produkTersaring.length === 0 && (
-                    <div className="produk-kosong">Produk tidak ditemukan.</div>
-                  )}
-                </div>
+                {!loadingProduk && !errorMuat && (
+                  <div className="produk-grid">
+                    {produkTersaring.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        className="produk-card"
+                        onClick={() => tambahKeKeranjang(p)}
+                      >
+                        <div className="produk-gambar">
+                          <Image
+                            src={normalisasiGambar(p.gambar)}
+                            alt={p.nama}
+                            fill
+                            sizes="120px"
+                            className="produk-gambar-img"
+                          />
+                        </div>
+
+                        <div className="produk-nama">{p.nama}</div>
+                        <div className="produk-harga">{formatRupiah(p.harga)}</div>
+                      </button>
+                    ))}
+
+                    {produkTersaring.length === 0 && (
+                      <div className="produk-kosong">Produk tidak ditemukan.</div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -346,7 +405,7 @@ export default function TransaksiPenjualanPage() {
                   <div className="keranjang-item" key={item.id}>
                     <div className="item-gambar">
                       <Image
-                        src={item.gambar}
+                        src={normalisasiGambar(item.gambar)}
                         alt={item.nama}
                         fill
                         sizes="52px"
@@ -714,6 +773,17 @@ export default function TransaksiPenjualanPage() {
 
         .kategori-scroll-btn:hover {
           border-color: #2f80ed;
+        }
+
+        .produk-status {
+          text-align: center;
+          padding: 30px 0;
+          color: #8794ab;
+          font-size: 13px;
+        }
+
+        .produk-error {
+          color: #e2231a;
         }
 
         .produk-grid {

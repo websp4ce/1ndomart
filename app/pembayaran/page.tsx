@@ -22,6 +22,7 @@ import {
   Printer,
   RefreshCw,
   X,
+  Loader2,
 } from 'lucide-react';
 
 type MetodeId = 'tunai' | 'qris' | 'debit' | 'ewallet';
@@ -112,6 +113,7 @@ function formatWaktu(detik: number): string {
 export default function PembayaranPage() {
   const router = useRouter();
   const [namaUser, setNamaUser] = useState('Kasir');
+  const [kasirId, setKasirId] = useState<string | null>(null);
   const [metodeAktif, setMetodeAktif] = useState<MetodeId | null>(null);
   const [kodePromo, setKodePromo] = useState('');
   const [itemBelanja, setItemBelanja] = useState<ItemBelanja[]>([]);
@@ -120,6 +122,12 @@ export default function PembayaranPage() {
   const [tahap, setTahap] = useState<TahapPembayaran>('pilih');
   const [uangDiterima, setUangDiterima] = useState('');
   const [detailBerhasil, setDetailBerhasil] = useState<DetailBerhasil | null>(null);
+
+  // Loading & error khusus proses simpan transaksi ke server, supaya
+  // tombol "Bayar" / "Konfirmasi Pembayaran" tidak bisa diklik dobel
+  // dan user tahu kalau penyimpanan gagal (bukan diam-diam dianggap sukses).
+  const [menyimpan, setMenyimpan] = useState(false);
+  const [simpanError, setSimpanError] = useState('');
 
   // Sub-langkah khusus E-Wallet: pilih provider dulu (GoPay/DANA/OVO/ShopeePay),
   // baru lanjut ke tampilan QR.
@@ -131,26 +139,27 @@ export default function PembayaranPage() {
   const [sisaWaktu, setSisaWaktu] = useState(5 * 60);
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem('currentUser');
-      if (raw) {
-        const user = JSON.parse(raw);
-        if (user?.nama) setNamaUser(user.nama);
-      }
-    } catch {
-      // biarkan default "Kasir"
+  try {
+    const raw = localStorage.getItem('indomart_user'); // sesuai key dari halaman login
+    if (raw) {
+      const user = JSON.parse(raw);
+      if (user?.nama) setNamaUser(user.nama);
+      if (user?.email) setKasirId(user.email); // pakai email sebagai identitas kasir
     }
+  } catch {
+    // biarkan default "Kasir"
+  }
 
-    try {
-      const rawKeranjang = localStorage.getItem('keranjangAktif');
-      if (rawKeranjang) {
-        const data = JSON.parse(rawKeranjang);
-        if (Array.isArray(data)) setItemBelanja(data);
-      }
-    } catch {
-      // kalau gagal dibaca, biarkan keranjang kosong
+  try {
+    const rawKeranjang = localStorage.getItem('keranjangAktif');
+    if (rawKeranjang) {
+      const data = JSON.parse(rawKeranjang);
+      if (Array.isArray(data)) setItemBelanja(data);
     }
-  }, []);
+  } catch {
+    // kalau gagal dibaca, biarkan keranjang kosong
+  }
+}, []);
 
   const jumlahItem = itemBelanja.length;
   const totalBelanja = itemBelanja.reduce((sum, item) => sum + item.harga * item.qty, 0);
@@ -193,6 +202,7 @@ export default function PembayaranPage() {
     setUangDiterima('');
     setEwalletProvider(null);
     setEwalletTahap('pilih');
+    setSimpanError('');
     setTahap('proses');
   };
 
@@ -201,11 +211,64 @@ export default function PembayaranPage() {
     setUangDiterima('');
     setEwalletProvider(null);
     setEwalletTahap('pilih');
+    setSimpanError('');
     setTahap('pilih');
   };
 
-  const handleBayarTunai = () => {
-    if (!uangCukup) return;
+  // Kirim transaksi ke server. Dipakai bareng oleh pembayaran tunai
+  // maupun non-tunai supaya logikanya tidak duplikat.
+  async function simpanTransaksi(metode: string, jumlahDibayar: number, kembalianAkhir: number) {
+    if (!kasirId) {
+      setSimpanError('Data kasir tidak ditemukan. Silakan login ulang.');
+      return false;
+    }
+
+    setMenyimpan(true);
+    setSimpanError('');
+
+    try {
+      const res = await fetch('/api/transactions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          kasirId,
+          items: itemBelanja.map((item) => ({
+            id: item.id,
+            nama: item.nama,
+            harga: item.harga,
+            qty: item.qty,
+          })),
+          diskon,
+          kodePromo: kodePromo.trim() || null,
+          metode,
+          jumlahDibayar,
+          kembalian: kembalianAkhir,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setSimpanError(data.message || 'Gagal menyimpan transaksi ke server.');
+        return false;
+      }
+
+      return true;
+    } catch (err) {
+      console.error(err);
+      setSimpanError('Terjadi kesalahan koneksi saat menyimpan transaksi.');
+      return false;
+    } finally {
+      setMenyimpan(false);
+    }
+  }
+
+  const handleBayarTunai = async () => {
+    if (!uangCukup || menyimpan) return;
+
+    const sukses = await simpanTransaksi('Tunai', angkaUangDiterima, kembalian);
+    if (!sukses) return; // tetap di modal, tampilkan error, jangan pindah tahap
+
     setDetailBerhasil({
       metode: 'Tunai',
       totalBayar: angkaUangDiterima,
@@ -214,10 +277,14 @@ export default function PembayaranPage() {
     setTahap('berhasil');
   };
 
-  const handleKonfirmasiNonTunai = () => {
-    if (!metodeTerpilih) return;
+  const handleKonfirmasiNonTunai = async () => {
+    if (!metodeTerpilih || menyimpan) return;
     const namaMetode =
       metodeTerpilih.id === 'ewallet' && providerAktif ? providerAktif.nama : metodeTerpilih.nama;
+
+    const sukses = await simpanTransaksi(namaMetode, grandTotal, 0);
+    if (!sukses) return;
+
     setDetailBerhasil({
       metode: namaMetode,
       totalBayar: grandTotal,
@@ -256,6 +323,7 @@ export default function PembayaranPage() {
     setEwalletProvider(null);
     setEwalletTahap('pilih');
     setDetailBerhasil(null);
+    setSimpanError('');
     setTahap('pilih');
   };
 
@@ -454,6 +522,10 @@ export default function PembayaranPage() {
                 </div>
 
                 <div className="modal-body">
+                  {simpanError && (
+                    <div className="simpan-error">{simpanError}</div>
+                  )}
+
                   {tahap === 'proses' && metodeTerpilih && metodeTerpilih.id === 'tunai' && (
                     <div className="tunai-box">
                       <div className="tunai-icon-row">
@@ -495,11 +567,15 @@ export default function PembayaranPage() {
                       <button
                         type="button"
                         className="btn-konfirmasi"
-                        disabled={!uangCukup}
+                        disabled={!uangCukup || menyimpan}
                         onClick={handleBayarTunai}
                       >
-                        <CheckCircle2 size={16} strokeWidth={2} />
-                        Bayar
+                        {menyimpan ? (
+                          <Loader2 size={16} className="spin" />
+                        ) : (
+                          <CheckCircle2 size={16} strokeWidth={2} />
+                        )}
+                        {menyimpan ? 'Menyimpan...' : 'Bayar'}
                       </button>
 
                       <button type="button" className="qris-kembali" onClick={handleGantiMetode}>
@@ -545,11 +621,15 @@ export default function PembayaranPage() {
                       <button
                         type="button"
                         className="btn-konfirmasi"
-                        disabled={grandTotal === 0}
+                        disabled={grandTotal === 0 || menyimpan}
                         onClick={handleKonfirmasiNonTunai}
                       >
-                        <CheckCircle2 size={16} strokeWidth={2} />
-                        Konfirmasi Pembayaran
+                        {menyimpan ? (
+                          <Loader2 size={16} className="spin" />
+                        ) : (
+                          <CheckCircle2 size={16} strokeWidth={2} />
+                        )}
+                        {menyimpan ? 'Menyimpan...' : 'Konfirmasi Pembayaran'}
                       </button>
 
                       <button type="button" className="debit-kembali" onClick={handleGantiMetode}>
@@ -595,11 +675,15 @@ export default function PembayaranPage() {
                       <button
                         type="button"
                         className="btn-konfirmasi"
-                        disabled={grandTotal === 0}
+                        disabled={grandTotal === 0 || menyimpan}
                         onClick={handleKonfirmasiNonTunai}
                       >
-                        <CheckCircle2 size={16} strokeWidth={2} />
-                        Bayar
+                        {menyimpan ? (
+                          <Loader2 size={16} className="spin" />
+                        ) : (
+                          <CheckCircle2 size={16} strokeWidth={2} />
+                        )}
+                        {menyimpan ? 'Menyimpan...' : 'Bayar'}
                       </button>
 
                       <button type="button" className="qris-kembali" onClick={handleGantiMetode}>
@@ -703,11 +787,15 @@ export default function PembayaranPage() {
                         <button
                           type="button"
                           className="btn-konfirmasi"
-                          disabled={grandTotal === 0}
+                          disabled={grandTotal === 0 || menyimpan}
                           onClick={handleKonfirmasiNonTunai}
                         >
-                          <CheckCircle2 size={16} strokeWidth={2} />
-                          Bayar
+                          {menyimpan ? (
+                            <Loader2 size={16} className="spin" />
+                          ) : (
+                            <CheckCircle2 size={16} strokeWidth={2} />
+                          )}
+                          {menyimpan ? 'Menyimpan...' : 'Bayar'}
                         </button>
 
                         <button
@@ -1009,6 +1097,25 @@ export default function PembayaranPage() {
 
         .modal-body {
           padding: 20px;
+        }
+
+        .simpan-error {
+          background: #fdecea;
+          color: #c0392b;
+          border-radius: 10px;
+          padding: 10px 12px;
+          font-size: 11.5px;
+          font-weight: 600;
+          margin-bottom: 14px;
+        }
+
+        .spin {
+          animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
         }
 
         .berhasil-judul {

@@ -11,6 +11,9 @@ import {
   Clock,
   PackageSearch,
   Info,
+  Plus,
+  X,
+  Loader2,
 } from 'lucide-react';
 import {
   MultiFormatReader,
@@ -25,11 +28,17 @@ import SidebarKasir from '../components/SidebarKasir';
 import HeaderKasir from '../components/HeaderKasir';
 
 type Produk = {
-  kode: string;
+  kode: string; // barcode
   nama: string;
   harga: number;
   stok: number;
-  gambar: string;
+  gambar: string | null;
+  kategori: string;
+};
+
+type Kategori = {
+  id: number;
+  nama: string;
 };
 
 // Item di keranjang. Dibuat generik (id/nama/harga/gambar/qty) supaya
@@ -65,47 +74,30 @@ function simpanKeranjang(items: ItemKeranjang[]) {
   }
 }
 
-const daftarProduk: Produk[] = [
-  {
-    kode: '089989010947',
-    nama: 'Indomie Goreng',
-    harga: 3500,
-    stok: 48,
-    gambar: '/produk/indomie-goreng.png',
-  },
-  {
-    kode: '8992870310100',
-    nama: 'Salonpas',
-    harga: 7000,
-    stok: 48,
-    gambar: '/produk/salonpas.png',
-  },
-  {
-    kode: '8996001600017',
-    nama: 'Aqua Botol 600ml',
-    harga: 4000,
-    stok: 120,
-    gambar: '/produk/aqua-600ml.png',
-  },
-  {
-    kode: '8991002101012',
-    nama: 'Teh Botol Sosro 450ml',
-    harga: 5500,
-    stok: 76,
-    gambar: '/produk/teh-botol.png',
-  },
-  {
-    kode: '8993188111120',
-    nama: 'kingkong',
-    harga: 15000,
-    stok: 10000,
-    gambar: '/produk/kingkong.png',
-  },
-];
-
 function formatRupiah(angka: number) {
   return `Rp ${angka.toLocaleString('id-ID')}`;
 }
+
+// Jaga-jaga kalau data gambar dari database formatnya salah
+// (misal cuma "kingkong.png" tanpa "/" di depan, atau kosong/null).
+// HARUS SAMA dengan yang dipakai di halaman transaksi.
+function normalisasiGambar(src: string | null | undefined): string {
+  if (!src) return '/placeholder.png';
+  if (src.startsWith('/') || src.startsWith('http://') || src.startsWith('https://')) {
+    return src;
+  }
+  return `/${src}`;
+}
+
+// Form kosong buat modal Add Product
+const formKosong = {
+  barcode: '',
+  nama: '',
+  harga: '',
+  stok: '',
+  kategori: '',
+  gambar: '',
+};
 
 export default function ScanBarcodePage() {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -117,16 +109,70 @@ export default function ScanBarcodePage() {
   const [kodeManual, setKodeManual] = useState('');
   const [hasil, setHasil] = useState<Produk | null>(null);
   const [tidakDitemukan, setTidakDitemukan] = useState(false);
+  const [mencari, setMencari] = useState(false);
   const [kameraAktif, setKameraAktif] = useState(false);
   const [kameraError, setKameraError] = useState('');
   const kodeTerakhirRef = useRef<{ kode: string; waktu: number } | null>(null);
   const COOLDOWN_MS = 2000;
+
+  // Daftar produk (buat saran/typeahead pas ngetik manual) & kategori
+  // (buat datalist di form Add Product). Diambil dari API, bukan array
+  // dummy lagi.
+  const [daftarProduk, setDaftarProduk] = useState<Produk[]>([]);
+  const [daftarKategori, setDaftarKategori] = useState<Kategori[]>([]);
+
+  // Modal "Add Product"
+  const [showAddProduct, setShowAddProduct] = useState(false);
+  const [formProduk, setFormProduk] = useState(formKosong);
+  const [simpanLoading, setSimpanLoading] = useState(false);
+  const [simpanError, setSimpanError] = useState('');
+  const [simpanSukses, setSimpanSukses] = useState('');
+
   const kodeDicari = kodeManual.trim();
   const saranProduk = kodeDicari
     ? daftarProduk.filter((p) => p.kode.startsWith(kodeDicari))
     : [];
   const tampilkanSaran =
     saranProduk.length > 0 && !(hasil && hasil.kode === kodeDicari);
+
+  // Ambil daftar produk (buat saran) & kategori (buat form Add Product)
+  // begitu halaman dibuka.
+  async function muatDaftarProduk() {
+    try {
+      const res = await fetch('/api/products');
+      if (res.ok) {
+        const data = await res.json();
+        setDaftarProduk(
+          data.map((p: any) => ({
+            kode: p.id,
+            nama: p.nama,
+            harga: p.harga,
+            stok: p.stok,
+            gambar: p.gambar,
+            kategori: p.kategori,
+          }))
+        );
+      }
+    } catch (err) {
+      console.error('Gagal memuat daftar produk:', err);
+    }
+  }
+
+  async function muatDaftarKategori() {
+    try {
+      const res = await fetch('/api/categories');
+      if (res.ok) {
+        setDaftarKategori(await res.json());
+      }
+    } catch (err) {
+      console.error('Gagal memuat kategori:', err);
+    }
+  }
+
+  useEffect(() => {
+    muatDaftarProduk();
+    muatDaftarKategori();
+  }, []);
 
   // Tambah produk ke keranjang bersama (yang dipakai juga oleh halaman
   // transaksi) langsung lewat localStorage — kalau kode produknya sudah
@@ -144,7 +190,7 @@ export default function ScanBarcodePage() {
             id: produk.kode,
             nama: produk.nama,
             harga: produk.harga,
-            gambar: produk.gambar,
+            gambar: normalisasiGambar(produk.gambar),
             qty: 1,
           },
         ];
@@ -156,7 +202,9 @@ export default function ScanBarcodePage() {
     cariProduk(produk.kode);
   }
 
-  function cariProduk(kode: string) {
+  // Dulu ini cuma cari di array lokal (sinkron). Sekarang manggil
+  // GET /api/products/:barcode ke database (async).
+  async function cariProduk(kode: string) {
     const kodeBersih = kode.trim();
     if (!kodeBersih) return;
 
@@ -167,20 +215,92 @@ export default function ScanBarcodePage() {
     }
     kodeTerakhirRef.current = { kode: kodeBersih, waktu: sekarang };
 
-    const produk = daftarProduk.find((p) => p.kode === kodeBersih);
+    setMencari(true);
+    try {
+      const res = await fetch(`/api/products/${encodeURIComponent(kodeBersih)}`);
 
-    if (produk) {
-      setHasil(produk);
-      setTidakDitemukan(false);
-      tambahKeKeranjang(produk);
-    } else {
+      if (res.ok) {
+        const produk: Produk = await res.json();
+        setHasil(produk);
+        setTidakDitemukan(false);
+        tambahKeKeranjang(produk);
+      } else {
+        setHasil(null);
+        setTidakDitemukan(true);
+      }
+    } catch (err) {
+      console.error('Gagal mencari produk:', err);
       setHasil(null);
       setTidakDitemukan(true);
+    } finally {
+      setMencari(false);
     }
   }
 
   function handleCariManual() {
     cariProduk(kodeManual);
+  }
+
+  // ==================== Add Product ====================
+
+  function bukaFormAddProduct(prefillBarcode?: string) {
+    setFormProduk({ ...formKosong, barcode: prefillBarcode ?? kodeManual });
+    setSimpanError('');
+    setSimpanSukses('');
+    setShowAddProduct(true);
+  }
+
+  function tutupFormAddProduct() {
+    setShowAddProduct(false);
+  }
+
+  async function handleSimpanProduk() {
+    setSimpanError('');
+    setSimpanSukses('');
+
+    const { barcode, nama, harga, stok, kategori, gambar } = formProduk;
+
+    if (!barcode.trim() || !nama.trim() || !harga.trim() || !kategori.trim()) {
+      setSimpanError('Barcode, nama, harga, dan kategori wajib diisi.');
+      return;
+    }
+
+    setSimpanLoading(true);
+    try {
+      const res = await fetch('/api/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          barcode: barcode.trim(),
+          nama: nama.trim(),
+          harga: Number(harga),
+          stok: stok.trim() ? Number(stok) : 0,
+          kategori: kategori.trim(),
+          gambar: gambar.trim() || null,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setSimpanError(data.message || 'Gagal menyimpan produk.');
+        return;
+      }
+
+      setSimpanSukses('Produk berhasil ditambahkan!');
+      // Refresh daftar produk & kategori supaya kategori baru (mis. "Obat")
+      // langsung ikut muncul, termasuk nanti di pill halaman Transaksi.
+      await Promise.all([muatDaftarProduk(), muatDaftarKategori()]);
+
+      setTimeout(() => {
+        setShowAddProduct(false);
+      }, 900);
+    } catch (err) {
+      console.error(err);
+      setSimpanError('Terjadi kesalahan saat menyimpan produk.');
+    } finally {
+      setSimpanLoading(false);
+    }
   }
 
   // Beberapa "varian" pemrosesan gambar yang dicoba bergantian tiap frame.
@@ -346,8 +466,9 @@ export default function ScanBarcodePage() {
     setKameraAktif(false);
   }
 
-  // Kalau yang diketik sudah persis cocok satu kode produk secara penuh,
-  // langsung tampilkan hasilnya otomatis tanpa perlu klik "Cari".
+  // Kalau yang diketik sudah persis cocok satu kode produk secara penuh
+  // (dari daftar produk yang sudah dimuat), langsung tampilkan hasilnya
+  // otomatis tanpa perlu klik "Cari".
   useEffect(() => {
     const kodeBersih = kodeManual.trim();
     if (!kodeBersih) return;
@@ -356,7 +477,7 @@ export default function ScanBarcodePage() {
       cariProduk(kodeBersih);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kodeManual]);
+  }, [kodeManual, daftarProduk]);
 
   // Pastikan kamera & interval scan dimatikan saat pindah halaman
   useEffect(() => {
@@ -375,18 +496,28 @@ export default function ScanBarcodePage() {
         <HeaderKasir judul="Indomart" breadcrumb="Kasir / Transaksi" />
 
         <main className="flex-1 px-8 py-7">
-          <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
-              <ScanLine size={20} strokeWidth={2.2} />
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                <ScanLine size={20} strokeWidth={2.2} />
+              </div>
+              <div>
+                <h1 className="text-[22px] font-extrabold text-slate-900">
+                  Scan <span className="text-blue-600">Barcode</span>
+                </h1>
+                <p className="mt-0.5 text-[13px] text-slate-500">
+                  Arahkan barcode ke kamera atau masukkan kode secara manual
+                </p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-[22px] font-extrabold text-slate-900">
-                Scan <span className="text-blue-600">Barcode</span>
-              </h1>
-              <p className="mt-0.5 text-[13px] text-slate-500">
-                Arahkan barcode ke kamera atau masukkan kode secara manual
-              </p>
-            </div>
+
+            <button
+              onClick={() => bukaFormAddProduct()}
+              className="flex items-center gap-2 rounded-full bg-blue-600 px-5 py-2.5 text-[13px] font-semibold text-white shadow hover:bg-blue-700"
+            >
+              <Plus size={16} strokeWidth={2.4} />
+              Add Product
+            </button>
           </div>
 
           <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[1.4fr_1fr]">
@@ -499,9 +630,14 @@ export default function ScanBarcodePage() {
 
                   <button
                     onClick={handleCariManual}
-                    className="flex h-10 items-center gap-1.5 rounded-lg bg-blue-600 px-4 text-[12px] font-semibold text-white hover:bg-blue-700"
+                    disabled={mencari}
+                    className="flex h-10 items-center gap-1.5 rounded-lg bg-blue-600 px-4 text-[12px] font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
                   >
-                    <Search size={14} strokeWidth={2.2} />
+                    {mencari ? (
+                      <Loader2 size={14} className="animate-spin" />
+                    ) : (
+                      <Search size={14} strokeWidth={2.2} />
+                    )}
                     Cari
                   </button>
 
@@ -515,7 +651,7 @@ export default function ScanBarcodePage() {
                         >
                           <div className="relative h-8 w-8 flex-shrink-0 overflow-hidden rounded-md bg-slate-100">
                             <Image
-                              src={produk.gambar}
+                              src={normalisasiGambar(produk.gambar)}
                               alt={produk.nama}
                               fill
                               className="object-cover"
@@ -560,7 +696,7 @@ export default function ScanBarcodePage() {
                       <div className="flex items-center gap-3">
                         <div className="relative h-14 w-14 flex-shrink-0 overflow-hidden rounded-lg bg-slate-100">
                           <Image
-                            src={hasil.gambar}
+                            src={normalisasiGambar(hasil.gambar)}
                             alt={hasil.nama}
                             fill
                             className="object-cover"
@@ -577,8 +713,11 @@ export default function ScanBarcodePage() {
                         </div>
                       </div>
 
-                      <div className="mt-3 border-t border-slate-100 pt-3 text-center text-[12px] text-slate-500">
-                        Stok : {hasil.stok}
+                      <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3 text-[12px] text-slate-500">
+                        <span>Stok : {hasil.stok}</span>
+                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10.5px] font-semibold text-slate-600">
+                          {hasil.kategori}
+                        </span>
                       </div>
                     </div>
                   ) : tidakDitemukan ? (
@@ -592,6 +731,13 @@ export default function ScanBarcodePage() {
                       <p className="px-6 text-[11.5px] text-slate-400">
                         Kode yang dimasukkan tidak cocok dengan produk manapun.
                       </p>
+                      <button
+                        onClick={() => bukaFormAddProduct(kodeManual)}
+                        className="mt-1 flex items-center gap-1.5 rounded-full bg-blue-600 px-4 py-2 text-[11.5px] font-semibold text-white hover:bg-blue-700"
+                      >
+                        <Plus size={13} strokeWidth={2.4} />
+                        Tambah produk dengan kode ini
+                      </button>
                     </div>
                   ) : (
                     <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-slate-200 py-8 text-center">
@@ -612,6 +758,140 @@ export default function ScanBarcodePage() {
           </div>
         </main>
       </div>
+
+      {/* ==================== Modal Add Product ==================== */}
+      {showAddProduct && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"
+          onClick={tutupFormAddProduct}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <h2 className="text-[16px] font-bold text-slate-900">Tambah Produk</h2>
+              <button
+                onClick={tutupFormAddProduct}
+                className="rounded-lg p-1.5 hover:bg-slate-100"
+                aria-label="Tutup"
+              >
+                <X size={18} strokeWidth={2.2} />
+              </button>
+            </div>
+
+            <div className="mt-4 flex flex-col gap-3">
+              <div>
+                <label className="mb-1 block text-[11.5px] font-semibold text-slate-600">
+                  Barcode
+                </label>
+                <input
+                  type="text"
+                  value={formProduk.barcode}
+                  onChange={(e) => setFormProduk({ ...formProduk, barcode: e.target.value })}
+                  placeholder="mis. 8991234567890"
+                  className="h-10 w-full rounded-lg border border-slate-200 px-3 text-[12.5px] outline-none focus:border-blue-400"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-[11.5px] font-semibold text-slate-600">
+                  Nama Produk
+                </label>
+                <input
+                  type="text"
+                  value={formProduk.nama}
+                  onChange={(e) => setFormProduk({ ...formProduk, nama: e.target.value })}
+                  placeholder="mis. Paramex"
+                  className="h-10 w-full rounded-lg border border-slate-200 px-3 text-[12.5px] outline-none focus:border-blue-400"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-[11.5px] font-semibold text-slate-600">
+                    Harga
+                  </label>
+                  <input
+                    type="number"
+                    value={formProduk.harga}
+                    onChange={(e) => setFormProduk({ ...formProduk, harga: e.target.value })}
+                    placeholder="3000"
+                    className="h-10 w-full rounded-lg border border-slate-200 px-3 text-[12.5px] outline-none focus:border-blue-400"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[11.5px] font-semibold text-slate-600">
+                    Stok
+                  </label>
+                  <input
+                    type="number"
+                    value={formProduk.stok}
+                    onChange={(e) => setFormProduk({ ...formProduk, stok: e.target.value })}
+                    placeholder="0"
+                    className="h-10 w-full rounded-lg border border-slate-200 px-3 text-[12.5px] outline-none focus:border-blue-400"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-[11.5px] font-semibold text-slate-600">
+                  Kategori
+                </label>
+                <input
+                  type="text"
+                  list="daftar-kategori"
+                  value={formProduk.kategori}
+                  onChange={(e) => setFormProduk({ ...formProduk, kategori: e.target.value })}
+                  placeholder="Pilih yang sudah ada, atau ketik kategori baru (mis. Obat)"
+                  className="h-10 w-full rounded-lg border border-slate-200 px-3 text-[12.5px] outline-none focus:border-blue-400"
+                />
+                {/* Kategori yang sudah ada muncul sebagai saran, tapi bisa
+                    diketik bebas — kalau kategorinya baru, backend yang
+                    otomatis nambahin ke tabel categories. */}
+                <datalist id="daftar-kategori">
+                  {daftarKategori.map((k) => (
+                    <option key={k.id} value={k.nama} />
+                  ))}
+                </datalist>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-[11.5px] font-semibold text-slate-600">
+                  Path Gambar <span className="font-normal text-slate-400">(opsional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={formProduk.gambar}
+                  onChange={(e) => setFormProduk({ ...formProduk, gambar: e.target.value })}
+                  placeholder="/produk/nama-file.png"
+                  className="h-10 w-full rounded-lg border border-slate-200 px-3 text-[12.5px] outline-none focus:border-blue-400"
+                />
+              </div>
+
+              {simpanError && (
+                <div className="rounded-lg bg-red-50 px-3 py-2 text-[11.5px] text-red-600">
+                  {simpanError}
+                </div>
+              )}
+              {simpanSukses && (
+                <div className="rounded-lg bg-emerald-50 px-3 py-2 text-[11.5px] text-emerald-600">
+                  {simpanSukses}
+                </div>
+              )}
+
+              <button
+                onClick={handleSimpanProduk}
+                disabled={simpanLoading}
+                className="mt-1 flex h-11 items-center justify-center gap-2 rounded-lg bg-blue-600 text-[13px] font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+              >
+                {simpanLoading && <Loader2 size={15} className="animate-spin" />}
+                {simpanLoading ? 'Menyimpan...' : 'Simpan Produk'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
