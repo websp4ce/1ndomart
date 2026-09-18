@@ -8,17 +8,58 @@ import {
   Package,
   Boxes,
   BarChart3,
+  AlertTriangle,
+  CalendarClock,
+  PackageX,
+  Undo2,
+  ArrowLeftRight,
 } from 'lucide-react';
 
+// Item lama (JANGAN diubah label/href/urutannya — dipakai juga oleh halaman teman)
 const navItems = [
   ['Dashboard', '/dashboard/inventory', Home],
   ['Produk & Kategori', '/inventory/produk', Package],
   ['Stok Barang', '/inventory/stok', Boxes],
+] as const;
+
+// Item baru buat halaman tugas sendiri (Stok Minimum, Barang Expired, Barang Rusak, Barang Retur, Transfer Stok).
+const navItemsTambahan = [
+  ['Stok Minimum', '/inventory/stok-minimum', AlertTriangle],
+  ['Barang Expired', '/inventory/barang-expired', CalendarClock],
+  ['Barang Rusak', '/inventory/barang-rusak', PackageX],
+  ['Barang Retur', '/inventory/barang-retur', Undo2],
+  ['Transfer Stok', '/inventory/transfer-stok', ArrowLeftRight],
   ['Laporan Inventory', '/inventory/laporan', BarChart3],
 ] as const;
 
 export default function SidebarInventory() {
   const pathname = usePathname();
+
+  const renderMenuItem = ([label, href, Icon]: readonly [string, string, typeof Home]) => {
+    // startsWith supaya sub-halaman (mis. /inventory/stok-minimum/123) tetap ke-highlight
+    const active = pathname === href || pathname.startsWith(`${href}/`);
+
+    return (
+      <Link
+        key={label}
+        href={href}
+        title={label}
+        className={`group flex h-11 w-full items-center justify-center gap-3 rounded-xl px-2 text-[12px] font-semibold transition-all md:justify-start md:px-3 ${
+          active
+            ? 'bg-blue-600 text-white shadow-md shadow-blue-100'
+            : 'text-slate-500 hover:bg-blue-50 hover:text-blue-600'
+        }`}
+      >
+        <Icon
+          size={19}
+          strokeWidth={1.8}
+          className={active ? 'text-white' : 'text-blue-500'}
+        />
+
+        <span className="hidden md:block">{label}</span>
+      </Link>
+    );
+  };
 
   return (
     <aside className="flex min-h-screen w-[72px] shrink-0 self-stretch flex-col border-r border-slate-100 bg-white md:w-56">
@@ -44,36 +85,11 @@ export default function SidebarInventory() {
         </p>
 
         <div className="space-y-1">
-          {navItems.map(([label, href, Icon]) => {
-            const active = pathname === href;
+          {navItems.map(renderMenuItem)}
+        </div>
 
-            return (
-              <Link
-                key={label}
-                href={href}
-                title={label}
-                className={`group flex h-11 w-full items-center justify-center gap-3 rounded-xl px-2 text-[12px] font-semibold transition-all md:justify-start md:px-3 ${
-                  active
-                    ? 'bg-blue-600 text-white shadow-md shadow-blue-100'
-                    : 'text-slate-500 hover:bg-blue-50 hover:text-blue-600'
-                }`}
-              >
-                <Icon
-                  size={19}
-                  strokeWidth={1.8}
-                  className={
-                    active
-                      ? 'text-white'
-                      : 'text-blue-500'
-                  }
-                />
-
-                <span className="hidden md:block">
-                  {label}
-                </span>
-              </Link>
-            );
-          })}
+        <div className="mt-1 space-y-1">
+          {navItemsTambahan.map(renderMenuItem)}
         </div>
       </nav>
 
