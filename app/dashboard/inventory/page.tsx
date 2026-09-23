@@ -1,27 +1,23 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import SidebarInventory from "@/app/components/SidebarInventory";
+
 import {
   Package,
   Tags,
-  Plus,
-  Pencil,
-  Trash2,
-  X,
-  Search,
+  Boxes,
+  AlertTriangle,
   Bell,
   ChevronDown,
-  Filter,
-  Utensils,
-  Coffee,
-  Home,
-  HeartPulse,
-  Sparkles,
-  MoreHorizontal,
   ArrowUpRight,
-  ShoppingCart,
+  PackageX,
+  RefreshCw,
+  LayoutDashboard,
+  CalendarClock,
+  RotateCcw,
+  ArrowLeftRight,
 } from "lucide-react";
 
 type Produk = {
@@ -39,34 +35,292 @@ type Kategori = {
   nama: string;
 };
 
-export default function ProdukPage() {
+type GenericItem = Record<string, any>;
+
+type ModuleData = {
+  items: GenericItem[];
+  loading: boolean;
+  error: boolean;
+};
+
+const menuInventory = [
+  {
+    label: "Produk & Kategori",
+    path: "/inventory/produk",
+    icon: Package,
+    color: "blue",
+  },
+  {
+    label: "Stok Barang",
+    path: "/inventory/stok",
+    icon: Boxes,
+    color: "emerald",
+  },
+  {
+    label: "Stok Minimum",
+    path: "/inventory/stok-minimum",
+    icon: AlertTriangle,
+    color: "amber",
+  },
+  {
+    label: "Barang Expired",
+    path: "/inventory/barang-expired",
+    icon: CalendarClock,
+    color: "red",
+  },
+  {
+    label: "Barang Rusak",
+    path: "/inventory/barang-rusak",
+    icon: PackageX,
+    color: "orange",
+  },
+  {
+    label: "Barang Retur",
+    path: "/inventory/barang-retur",
+    icon: RotateCcw,
+    color: "violet",
+  },
+  {
+    label: "Transfer Stok",
+    path: "/inventory/transfer-stok",
+    icon: ArrowLeftRight,
+    color: "cyan",
+  },
+];
+
+function getArrayFromResponse(data: any): GenericItem[] {
+  if (Array.isArray(data)) {
+    return data;
+  }
+
+  if (!data || typeof data !== "object") {
+    return [];
+  }
+
+  const keys = [
+    "data",
+    "items",
+    "rows",
+    "produk",
+    "barang",
+    "result",
+    "results",
+    "records",
+    "stok",
+    "retur",
+    "transfer",
+  ];
+
+  for (const key of keys) {
+    if (Array.isArray(data[key])) {
+      return data[key];
+    }
+  }
+
+  return [];
+}
+
+function formatNumber(value: number) {
+  return Number(value || 0).toLocaleString("id-ID");
+}
+
+function getColorClasses(color: string) {
+  const colors: Record<
+    string,
+    {
+      bg: string;
+      text: string;
+      border: string;
+    }
+  > = {
+    blue: {
+      bg: "bg-blue-50",
+      text: "text-blue-600",
+      border: "border-blue-100",
+    },
+    emerald: {
+      bg: "bg-emerald-50",
+      text: "text-emerald-600",
+      border: "border-emerald-100",
+    },
+    amber: {
+      bg: "bg-amber-50",
+      text: "text-amber-600",
+      border: "border-amber-100",
+    },
+    red: {
+      bg: "bg-red-50",
+      text: "text-red-600",
+      border: "border-red-100",
+    },
+    orange: {
+      bg: "bg-orange-50",
+      text: "text-orange-600",
+      border: "border-orange-100",
+    },
+    violet: {
+      bg: "bg-violet-50",
+      text: "text-violet-600",
+      border: "border-violet-100",
+    },
+    cyan: {
+      bg: "bg-cyan-50",
+      text: "text-cyan-600",
+      border: "border-cyan-100",
+    },
+  };
+
+  return colors[color] || colors.blue;
+}
+
+export default function DashboardInventoryPage() {
   const router = useRouter();
 
   const [produk, setProduk] = useState<Produk[]>([]);
   const [kategori, setKategori] = useState<Kategori[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [filterKategori, setFilterKategori] = useState("");
-  const [page, setPage] = useState(1);
 
-  const [showProduk, setShowProduk] = useState(false);
-  const [showKategori, setShowKategori] = useState(false);
-  const [editId, setEditId] = useState<number | null>(null);
+  const [stokMinimumData, setStokMinimumData] =
+    useState<ModuleData>({
+      items: [],
+      loading: true,
+      error: false,
+    });
 
-  const [form, setForm] = useState({
-    kode_produk: "",
-    nama: "",
-    kategori_id: "",
-    harga: "",
-    stok: "",
-  });
+  const [expiredData, setExpiredData] =
+    useState<ModuleData>({
+      items: [],
+      loading: true,
+      error: false,
+    });
 
-  const [namaKategori, setNamaKategori] = useState("");
+  const [rusakData, setRusakData] =
+    useState<ModuleData>({
+      items: [],
+      loading: true,
+      error: false,
+    });
+
+  const [returData, setReturData] =
+    useState<ModuleData>({
+      items: [],
+      loading: true,
+      error: false,
+    });
+
+  const [transferData, setTransferData] =
+    useState<ModuleData>({
+      items: [],
+      loading: true,
+      error: false,
+    });
+
+  const [loadingProduk, setLoadingProduk] = useState(true);
+
+  const loadData = async () => {
+    setLoadingProduk(true);
+
+    try {
+      const response = await fetch(
+        "/api/inventory/produk",
+        {
+          cache: "no-store",
+        }
+      );
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setProduk(data.produk || []);
+        setKategori(data.kategori || []);
+      } else {
+        setProduk([]);
+        setKategori([]);
+      }
+    } catch (error) {
+      console.error(
+        "Gagal mengambil data produk:",
+        error
+      );
+
+      setProduk([]);
+      setKategori([]);
+    } finally {
+      setLoadingProduk(false);
+    }
+
+    const modules = [
+      {
+        url: "/api/inventory/stok-minimum",
+        setter: setStokMinimumData,
+      },
+      {
+        url: "/api/inventory/barang-expired",
+        setter: setExpiredData,
+      },
+      {
+        url: "/api/barang-rusak?search=&status=Semua&tanggal=",
+        setter: setRusakData,
+      },
+      {
+        url: "/api/inventory/barang-retur",
+        setter: setReturData,
+      },
+      {
+        url: "/api/transfer-stok",
+        setter: setTransferData,
+      },
+    ];
+
+    await Promise.all(
+      modules.map(async (module) => {
+        try {
+          const response = await fetch(
+            module.url,
+            {
+              cache: "no-store",
+            }
+          );
+
+          if (!response.ok) {
+            module.setter({
+              items: [],
+              loading: false,
+              error: true,
+            });
+
+            return;
+          }
+
+          const data = await response.json();
+
+          module.setter({
+            items: getArrayFromResponse(data),
+            loading: false,
+            error: false,
+          });
+        } catch (error) {
+          console.error(
+            `Gagal mengambil ${module.url}`,
+            error
+          );
+
+          module.setter({
+            items: [],
+            loading: false,
+            error: true,
+          });
+        }
+      })
+    );
+  };
 
   useEffect(() => {
     const login = localStorage.getItem("login");
 
-    if (login !== "inventory" && login !== "admin") {
+    if (
+      login !== "inventory" &&
+      login !== "admin"
+    ) {
       router.push("/login");
       return;
     }
@@ -74,946 +328,521 @@ export default function ProdukPage() {
     loadData();
   }, [router]);
 
-  const loadData = async () => {
-    try {
-      setLoading(true);
-
-      const response = await fetch("/api/inventory/produk");
-      const data = await response.json();
-
-      if (!response.ok) {
-        alert(data.message || "Gagal mengambil data");
-        return;
-      }
-
-      setProduk(data.produk || []);
-      setKategori(data.kategori || []);
-    } catch (error) {
-      console.error(error);
-      alert("Tidak dapat terhubung ke server");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const resetForm = () => {
-    setForm({
-      kode_produk: "",
-      nama: "",
-      kategori_id: "",
-      harga: "",
-      stok: "",
-    });
-
-    setEditId(null);
-  };
-
-  const bukaTambah = () => {
-    resetForm();
-    setShowProduk(true);
-  };
-
-  const bukaEdit = (item: Produk) => {
-    setEditId(item.id);
-
-    setForm({
-      kode_produk: item.kode_produk,
-      nama: item.nama,
-      kategori_id: item.kategori_id ? String(item.kategori_id) : "",
-      harga: String(item.harga),
-      stok: String(item.stok),
-    });
-
-    setShowProduk(true);
-  };
-
-  const simpanProduk = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!form.kode_produk || !form.nama) {
-      alert("Kode produk dan nama produk wajib diisi");
-      return;
-    }
-
-    try {
-      const response = await fetch("/api/inventory/produk", {
-        method: editId ? "PUT" : "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          id: editId,
-          kode_produk: form.kode_produk,
-          nama: form.nama,
-          kategori_id: form.kategori_id ? Number(form.kategori_id) : null,
-          harga: Number(form.harga) || 0,
-          stok: Number(form.stok) || 0,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        alert(data.message || "Gagal menyimpan produk");
-        return;
-      }
-
-      alert(data.message);
-      setShowProduk(false);
-      resetForm();
-      loadData();
-    } catch (error) {
-      console.error(error);
-      alert("Terjadi kesalahan saat menyimpan produk");
-    }
-  };
-
-  const hapusProduk = async (id: number) => {
-    const yakin = confirm("Yakin ingin menghapus produk ini?");
-
-    if (!yakin) return;
-
-    try {
-      const response = await fetch("/api/inventory/produk", {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ id }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        alert(data.message || "Gagal menghapus produk");
-        return;
-      }
-
-      alert(data.message);
-      loadData();
-    } catch (error) {
-      console.error(error);
-      alert("Terjadi kesalahan saat menghapus produk");
-    }
-  };
-
-  const tambahKategori = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!namaKategori.trim()) {
-      alert("Nama kategori wajib diisi");
-      return;
-    }
-
-    try {
-      const response = await fetch("/api/inventory/produk", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          nama: namaKategori,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        alert(data.message || "Gagal menambahkan kategori");
-        return;
-      }
-
-      alert(data.message);
-      setNamaKategori("");
-      setShowKategori(false);
-      loadData();
-    } catch (error) {
-      console.error(error);
-      alert("Terjadi kesalahan");
-    }
-  };
-
-  const hapusKategori = async (id: number) => {
-    const yakin = confirm("Yakin ingin menghapus kategori ini?");
-
-    if (!yakin) return;
-
-    try {
-      const response = await fetch("/api/inventory/produk", {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ id }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        alert(data.message || "Gagal menghapus kategori");
-        return;
-      }
-
-      alert(data.message);
-      loadData();
-    } catch (error) {
-      console.error(error);
-      alert("Terjadi kesalahan");
-    }
-  };
-
-  const produkFilter = useMemo(() => {
-    const keyword = search.toLowerCase().trim();
-
-    return produk.filter((item) => {
-      const cocokSearch =
-        item.nama.toLowerCase().includes(keyword) ||
-        item.kode_produk.toLowerCase().includes(keyword) ||
-        (item.kategori || "").toLowerCase().includes(keyword);
-
-      const cocokKategori =
-        !filterKategori || item.kategori === filterKategori;
-
-      return cocokSearch && cocokKategori;
-    });
-  }, [produk, search, filterKategori]);
-
-  const perPage = 8;
-  const totalPage = Math.max(1, Math.ceil(produkFilter.length / perPage));
-
-  const produkTampil = produkFilter.slice(
-    (page - 1) * perPage,
-    page * perPage
+  const totalStok = produk.reduce(
+    (total, item) =>
+      total + Number(item.stok || 0),
+    0
   );
 
-  useEffect(() => {
-    setPage(1);
-  }, [search, filterKategori]);
+  const stokAman = produk.filter(
+    (item) => Number(item.stok) > 20
+  );
 
-
-  const kategoriIcons = [
-    { icon: Utensils, bg: "bg-blue-100", text: "text-blue-600" },
-    { icon: Coffee, bg: "bg-emerald-100", text: "text-emerald-600" },
-    { icon: Home, bg: "bg-violet-100", text: "text-violet-600" },
-    { icon: HeartPulse, bg: "bg-red-100", text: "text-red-500" },
-    { icon: Sparkles, bg: "bg-amber-100", text: "text-amber-500" },
-    { icon: MoreHorizontal, bg: "bg-slate-100", text: "text-slate-500" },
-  ];
-
-  const getKategoriIcon = (index: number) =>
-    kategoriIcons[index % kategoriIcons.length];
-
-  const getKategoriJumlah = (nama: string) =>
-    produk.filter((item) => item.kategori === nama).length;
-
-  const getStatus = (stok: number) => {
-    if (stok <= 0) {
-      return {
-        label: "Habis",
-        className: "bg-red-100 text-red-600",
-        dot: "bg-red-500",
-      };
-    }
-
-    if (stok <= 20) {
-      return {
-        label: "Menipis",
-        className: "bg-amber-100 text-amber-600",
-        dot: "bg-amber-500",
-      };
-    }
-
-    return {
-      label: "Tersedia",
-      className: "bg-emerald-100 text-emerald-600",
-      dot: "bg-emerald-500",
-    };
-  };
+  const hasNotification =
+    stokMinimumData.items.length > 0 ||
+    expiredData.items.length > 0 ||
+    produk.some(
+      (item) => Number(item.stok) <= 20
+    );
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-[#f5f8fc] text-slate-800">
       <style jsx global>{`
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(8px); }
-          to { opacity: 1; transform: translateY(0); }
+        @keyframes dashboardFade {
+          from {
+            opacity: 0;
+            transform: translateY(8px);
+          }
+
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        .dashboard-fade {
+          animation: dashboardFade 0.45s ease-out;
         }
       `}</style>
+
+      {/* SIDEBAR */}
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-[235px] lg:block">
         <SidebarInventory />
       </aside>
 
       <main className="min-h-screen w-full lg:ml-[235px] lg:w-[calc(100%-235px)]">
+
         {/* TOPBAR */}
         <header className="sticky top-0 z-30 h-[72px] border-b border-slate-100 bg-white/95 backdrop-blur-xl">
-          <div className="flex h-full items-center justify-between gap-5 px-5 lg:px-7">
-            <div className="relative w-full max-w-[490px]">
-              <Search
-                size={16}
-                className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
+          <div className="flex h-full items-center justify-end gap-4 px-5 lg:px-7">
+
+            {/* REFRESH */}
+            <button
+              type="button"
+              onClick={loadData}
+              className="flex h-10 w-10 items-center justify-center rounded-full text-slate-500 transition hover:bg-blue-50 hover:text-blue-600"
+              title="Refresh"
+            >
+              <RefreshCw
+                size={18}
+                className={
+                  loadingProduk
+                    ? "animate-spin"
+                    : ""
+                }
               />
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Cari produk, kategori..."
-                className="h-11 w-full rounded-full border border-slate-200 bg-white pl-11 pr-20 text-xs text-slate-700 outline-none shadow-[0_3px_15px_rgba(30,64,175,0.04)] transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"
+            </button>
+
+            {/* NOTIFICATION */}
+            <button
+              type="button"
+              className="relative flex h-10 w-10 items-center justify-center rounded-full text-slate-500 transition hover:bg-blue-50 hover:text-blue-600"
+            >
+              <Bell size={19} />
+
+              {hasNotification && (
+                <span className="absolute right-[7px] top-[6px] h-2 w-2 rounded-full border-2 border-white bg-red-500" />
+              )}
+            </button>
+
+            <div className="hidden h-9 w-px bg-slate-100 sm:block" />
+
+            {/* PROFILE */}
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-50">
+                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-600 text-white">
+                  <span className="text-xs font-bold">
+                    A
+                  </span>
+                </div>
+              </div>
+
+              <div className="hidden text-left sm:block">
+                <p className="text-xs font-bold text-[#102b66]">
+                  Admin
+                </p>
+
+                <p className="mt-0.5 text-[11px] text-slate-400">
+                  Inventory
+                </p>
+              </div>
+
+              <ChevronDown
+                size={15}
+                className="text-slate-500"
               />
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg border border-slate-100 bg-slate-50 px-2 py-1 text-[10px] font-medium text-slate-400">
-                Ctrl + K
-              </span>
-            </div>
-
-            <div className="flex items-center gap-5">
-              <button
-                className="relative flex h-10 w-10 items-center justify-center rounded-full text-slate-500 transition hover:bg-blue-50 hover:text-blue-600"
-                title="Notifikasi"
-              >
-                <Bell size={20} />
-                <span className="absolute right-[8px] top-[7px] h-2 w-2 rounded-full border-2 border-white bg-red-500" />
-              </button>
-
-              <div className="hidden h-9 w-px bg-slate-100 sm:block" />
-
-              <button
-                onClick={() => router.push("/dashboard/inventory")}
-                className="flex items-center gap-3 rounded-xl px-1 py-1 transition hover:bg-slate-50"
-              >
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-50">
-                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-600 text-white">
-                    <span className="text-xs font-bold">A</span>
-                  </div>
-                </div>
-
-                <div className="hidden text-left sm:block">
-                  <p className="text-xs font-bold text-[#102b66]">Admin</p>
-                  <p className="mt-0.5 text-[11px] text-slate-400">Inventory</p>
-                </div>
-
-                <ChevronDown size={15} className="text-slate-500" />
-              </button>
             </div>
           </div>
         </header>
 
-        <div className="mx-auto max-w-[1320px] animate-[fadeIn_.45s_ease-out_forwards] will-change-transform px-4 py-5 sm:px-6 lg:px-7">
-          {/* BREADCRUMB + TITLE */}
-          <div className="mb-5">
-            <div className="mb-2 flex items-center gap-2 text-[11px] font-medium text-slate-400">
-              <span>Inventory</span>
-              <span>›</span>
-              <span className="text-[#526b9b]">Produk &amp; Kategori</span>
+        <div className="dashboard-fade mx-auto max-w-[1400px] px-4 py-6 sm:px-6 lg:px-7">
+
+          {/* TITLE */}
+          <div className="mb-6 flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-100">
+              <LayoutDashboard size={20} />
             </div>
 
-            <h1 className="text-[28px] font-extrabold tracking-[-0.8px] text-[#102b66]">
-              Produk &amp; Kategori
-            </h1>
-            <p className="mt-1 text-sm text-[#6b7fa6]">
-              Kelola data produk dan kategori produk dengan mudah.
-            </p>
-          </div>
+            <div>
+              <h1 className="text-[27px] font-extrabold tracking-[-0.7px] text-[#102b66]">
+                Dashboard Inventory
+              </h1>
 
-          {/* STAT + BANNER */}
-          <div className="mb-5 grid grid-cols-1 gap-4 xl:grid-cols-[1fr_1fr_1.18fr]">
-            <div className="group relative overflow-hidden rounded-2xl border border-slate-100 bg-white p-5 shadow-[0_5px_20px_rgba(36,72,130,0.07)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_12px_30px_rgba(36,72,130,0.11)]">
-              <div className="absolute -bottom-10 -right-6 h-28 w-28 rounded-full bg-blue-50/80" />
-              <div className="absolute -bottom-5 right-10 h-16 w-16 rounded-full bg-blue-50/60" />
-
-              <div className="relative flex items-center gap-4">
-                <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-blue-50">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-full bg-blue-600 text-white shadow-lg shadow-blue-200">
-                    <Package size={22} />
-                  </div>
-                </div>
-
-                <div>
-                  <p className="text-xs font-bold text-[#223867]">Total Produk</p>
-                  <p className="mt-1 text-[28px] font-extrabold leading-none text-[#102b66]">
-                    {produk.length}
-                  </p>
-                  <p className="mt-2 flex items-center gap-1 text-[11px] text-slate-400">
-                    <ArrowUpRight size={13} className="text-emerald-500" />
-                    <span className="font-bold text-emerald-500">12%</span>
-                    dari bulan lalu
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="group relative overflow-hidden rounded-2xl border border-slate-100 bg-white p-5 shadow-[0_5px_20px_rgba(36,72,130,0.07)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_12px_30px_rgba(36,72,130,0.11)]">
-              <div className="absolute -bottom-10 -right-6 h-28 w-28 rounded-full bg-amber-50/90" />
-              <div className="absolute -bottom-5 right-10 h-16 w-16 rounded-full bg-amber-50/60" />
-
-              <div className="relative flex items-center gap-4">
-                <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-amber-50">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-full bg-amber-500 text-white shadow-lg shadow-amber-100">
-                    <Tags size={22} />
-                  </div>
-                </div>
-
-                <div>
-                  <p className="text-xs font-bold text-[#223867]">Total Kategori</p>
-                  <p className="mt-1 text-[28px] font-extrabold leading-none text-[#102b66]">
-                    {kategori.length}
-                  </p>
-                  <p className="mt-2 flex items-center gap-1 text-[11px] text-slate-400">
-                    <ArrowUpRight size={13} className="text-emerald-500" />
-                    <span className="font-bold text-emerald-500">2%</span>
-                    dari bulan lalu
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="group relative min-h-[133px] overflow-hidden rounded-2xl bg-gradient-to-r from-[#edf5ff] via-[#e7f1ff] to-[#dceaff] px-5 py-4 shadow-[0_5px_20px_rgba(36,72,130,0.05)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_12px_28px_rgba(36,72,130,0.10)]">
-              <div className="relative z-10 max-w-[62%]">
-                <h2 className="text-[16px] font-extrabold leading-[1.35] tracking-[-0.2px] text-[#102b66]">
-                  Produk Berkualitas
-                  <br />
-                  untuk Setiap Kebutuhan
-                </h2>
-
-                <p className="mt-2 text-[10.5px] leading-[1.65] text-[#45618f]">
-                  Kelola produk dengan baik,
-                  <br />
-                  untuk pelayanan yang lebih baik.
-                </p>
-
-                <div className="mt-2 h-1 w-[70px] -rotate-[4deg] rounded-full bg-amber-500 transition-all duration-300 group-hover:w-[82px]" />
-              </div>
-
-              <div className="absolute bottom-2 right-4 h-[112px] w-[132px] transition-transform duration-500 group-hover:scale-105">
-                <div className="absolute bottom-1 left-1/2 -translate-x-1/2">
-                  <ShoppingCart
-                    size={76}
-                    strokeWidth={1.75}
-                    className="text-blue-600 drop-shadow-[0_8px_10px_rgba(37,99,235,0.16)]"
-                  />
-                  <span className="absolute bottom-[1px] left-[15px] h-2.5 w-2.5 rounded-full bg-slate-500" />
-                  <span className="absolute bottom-[1px] right-[4px] h-2.5 w-2.5 rounded-full bg-slate-500" />
-                </div>
-              </div>
+              <p className="mt-0.5 text-sm text-[#6b7fa6]">
+                Ringkasan seluruh aktivitas dan data inventory.
+              </p>
             </div>
           </div>
 
-          {/* KATEGORI */}
-          <section className="mb-5 rounded-2xl border border-slate-100 bg-white p-4 shadow-[0_5px_20px_rgba(36,72,130,0.06)] transition-all duration-300 hover:shadow-[0_10px_28px_rgba(36,72,130,0.08)] sm:p-5">
-            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          {/* MENU INVENTORY */}
+          <section className="mb-6">
+            <div className="mb-4">
+              <h2 className="text-[18px] font-extrabold text-[#102b66]">
+                Menu Inventory
+              </h2>
+
+              <p className="mt-1 text-[11px] text-slate-400">
+                Akses seluruh pengelolaan inventory.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+              {menuInventory.map((menu) => {
+                const Icon = menu.icon;
+                const color = getColorClasses(
+                  menu.color
+                );
+
+                return (
+                  <button
+                    key={menu.path}
+                    type="button"
+                    onClick={() =>
+                      router.push(menu.path)
+                    }
+                    className="group flex min-h-[78px] items-center gap-3 rounded-2xl border border-slate-100 bg-white p-4 text-left shadow-[0_5px_20px_rgba(36,72,130,0.05)] transition-all duration-300 hover:-translate-y-1 hover:border-blue-100 hover:shadow-[0_12px_30px_rgba(36,72,130,0.10)]"
+                  >
+                    <span
+                      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${color.bg} ${color.text} transition-all duration-300 group-hover:bg-blue-600 group-hover:text-white`}
+                    >
+                      <Icon size={19} />
+                    </span>
+
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[11px] font-bold text-[#405a88]">
+                        {menu.label}
+                      </span>
+
+                      <span className="mt-1 flex items-center gap-1 text-[9px] text-slate-400">
+                        Buka halaman
+                        <ArrowUpRight size={10} />
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+
+          {/* RINGKASAN INVENTORY */}
+          <section className="overflow-hidden rounded-[24px] border border-slate-100 bg-white shadow-[0_8px_30px_rgba(36,72,130,0.06)]">
+
+            {/* HEADER */}
+            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-5 sm:px-6">
               <div>
-                <h2 className="text-[16px] font-extrabold text-[#102b66]">
-                  Kategori
+                <h2 className="text-[20px] font-extrabold tracking-[-0.3px] text-[#102b66]">
+                  Ringkasan Inventory
                 </h2>
-                <p className="mt-1 text-[11px] text-[#7183a5]">
-                  Kelola kategori produk untuk memudahkan pengelompokan.
+
+                <p className="mt-1 text-[11px] text-[#8193b5]">
+                  Data inventory yang diambil langsung dari sistem.
                 </p>
               </div>
 
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+                <Boxes size={20} />
+              </div>
+            </div>
+
+            {/* CARDS */}
+            <div className="grid grid-cols-1 gap-3 p-5 sm:grid-cols-2 xl:grid-cols-4">
+
+              {/* TOTAL PRODUK */}
+              <div className="group rounded-2xl border border-blue-100 bg-blue-50/40 p-4 transition hover:-translate-y-1 hover:shadow-md">
+                <div className="flex items-center justify-between">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100 text-blue-600">
+                    <Package size={19} />
+                  </div>
+
+                  <ArrowUpRight
+                    size={15}
+                    className="text-blue-400 transition group-hover:text-blue-600"
+                  />
+                </div>
+
+                <p className="mt-5 text-[11px] font-bold text-[#405a88]">
+                  Total Produk
+                </p>
+
+                <p className="mt-1 text-[27px] font-extrabold text-[#102b66]">
+                  {loadingProduk
+                    ? "..."
+                    : formatNumber(
+                        produk.length
+                      )}
+                </p>
+
+                <p className="mt-1 text-[10px] text-slate-400">
+                  Produk terdaftar
+                </p>
+              </div>
+
+              {/* TOTAL KATEGORI */}
+              <div className="group rounded-2xl border border-violet-100 bg-violet-50/40 p-4 transition hover:-translate-y-1 hover:shadow-md">
+                <div className="flex items-center justify-between">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-100 text-violet-600">
+                    <Tags size={19} />
+                  </div>
+
+                  <ArrowUpRight
+                    size={15}
+                    className="text-violet-400 transition group-hover:text-violet-600"
+                  />
+                </div>
+
+                <p className="mt-5 text-[11px] font-bold text-[#405a88]">
+                  Total Kategori
+                </p>
+
+                <p className="mt-1 text-[27px] font-extrabold text-[#102b66]">
+                  {loadingProduk
+                    ? "..."
+                    : formatNumber(
+                        kategori.length
+                      )}
+                </p>
+
+                <p className="mt-1 text-[10px] text-slate-400">
+                  Kategori produk
+                </p>
+              </div>
+
+              {/* TOTAL STOK */}
+              <div className="group rounded-2xl border border-emerald-100 bg-emerald-50/40 p-4 transition hover:-translate-y-1 hover:shadow-md">
+                <div className="flex items-center justify-between">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600">
+                    <Boxes size={19} />
+                  </div>
+
+                  <ArrowUpRight
+                    size={15}
+                    className="text-emerald-400 transition group-hover:text-emerald-600"
+                  />
+                </div>
+
+                <p className="mt-5 text-[11px] font-bold text-[#405a88]">
+                  Total Stok
+                </p>
+
+                <p className="mt-1 text-[27px] font-extrabold text-[#102b66]">
+                  {loadingProduk
+                    ? "..."
+                    : formatNumber(
+                        totalStok
+                      )}
+                </p>
+
+                <p className="mt-1 text-[10px] text-slate-400">
+                  Semua unit produk
+                </p>
+              </div>
+
+              {/* STOK AMAN */}
+              <div className="group rounded-2xl border border-emerald-100 bg-emerald-50/40 p-4 transition hover:-translate-y-1 hover:shadow-md">
+                <div className="flex items-center justify-between">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600">
+                    <Boxes size={19} />
+                  </div>
+
+                  <ArrowUpRight
+                    size={15}
+                    className="text-emerald-400 transition group-hover:text-emerald-600"
+                  />
+                </div>
+
+                <p className="mt-5 text-[11px] font-bold text-emerald-700">
+                  Stok Aman
+                </p>
+
+                <p className="mt-1 text-[27px] font-extrabold text-[#102b66]">
+                  {loadingProduk
+                    ? "..."
+                    : formatNumber(
+                        stokAman.length
+                      )}
+                </p>
+
+                <p className="mt-1 text-[10px] text-emerald-600">
+                  Stok di atas 20 unit
+                </p>
+              </div>
+
+              {/* STOK MINIMUM */}
               <button
-                onClick={() => setShowKategori(true)}
-                className="flex h-9 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-[11px] font-bold text-white shadow-md shadow-blue-100 transition hover:-translate-y-0.5 hover:bg-blue-700"
+                type="button"
+                onClick={() =>
+                  router.push(
+                    "/inventory/stok-minimum"
+                  )
+                }
+                className="group rounded-2xl border border-amber-100 bg-amber-50/40 p-4 text-left transition hover:-translate-y-1 hover:shadow-md"
               >
-                <Plus size={15} />
-                Tambah Kategori
+                <div className="flex items-center justify-between">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 text-amber-600">
+                    <AlertTriangle size={19} />
+                  </div>
+
+                  <ArrowUpRight
+                    size={15}
+                    className="text-amber-400"
+                  />
+                </div>
+
+                <p className="mt-5 text-[11px] font-bold text-amber-700">
+                  Stok Minimum
+                </p>
+
+                <p className="mt-1 text-[27px] font-extrabold text-[#102b66]">
+                  {stokMinimumData.error
+                    ? "-"
+                    : formatNumber(
+                        stokMinimumData.items.length
+                      )}
+                </p>
+
+                <p className="mt-1 text-[10px] text-amber-600">
+                  Di bawah batas minimum
+                </p>
+              </button>
+
+              {/* BARANG EXPIRED */}
+              <button
+                type="button"
+                onClick={() =>
+                  router.push(
+                    "/inventory/barang-expired"
+                  )
+                }
+                className="group rounded-2xl border border-red-100 bg-red-50/40 p-4 text-left transition hover:-translate-y-1 hover:shadow-md"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-red-100 text-red-600">
+                    <CalendarClock size={19} />
+                  </div>
+
+                  <ArrowUpRight
+                    size={15}
+                    className="text-red-400"
+                  />
+                </div>
+
+                <p className="mt-5 text-[11px] font-bold text-red-700">
+                  Barang Expired
+                </p>
+
+                <p className="mt-1 text-[27px] font-extrabold text-[#102b66]">
+                  {expiredData.error
+                    ? "-"
+                    : formatNumber(
+                        expiredData.items.length
+                      )}
+                </p>
+
+                <p className="mt-1 text-[10px] text-red-600">
+                  Data barang kedaluwarsa
+                </p>
+              </button>
+
+              {/* BARANG RUSAK */}
+              <button
+                type="button"
+                onClick={() =>
+                  router.push(
+                    "/inventory/barang-rusak"
+                  )
+                }
+                className="group rounded-2xl border border-orange-100 bg-orange-50/40 p-4 text-left transition hover:-translate-y-1 hover:shadow-md"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-100 text-orange-600">
+                    <PackageX size={19} />
+                  </div>
+
+                  <ArrowUpRight
+                    size={15}
+                    className="text-orange-400"
+                  />
+                </div>
+
+                <p className="mt-5 text-[11px] font-bold text-orange-700">
+                  Barang Rusak
+                </p>
+
+                <p className="mt-1 text-[27px] font-extrabold text-[#102b66]">
+                  {rusakData.error
+                    ? "-"
+                    : formatNumber(
+                        rusakData.items.length
+                      )}
+                </p>
+
+                <p className="mt-1 text-[10px] text-orange-600">
+                  Data barang rusak
+                </p>
+              </button>
+
+              {/* BARANG RETUR */}
+              <button
+                type="button"
+                onClick={() =>
+                  router.push(
+                    "/inventory/barang-retur"
+                  )
+                }
+                className="group rounded-2xl border border-violet-100 bg-violet-50/40 p-4 text-left transition hover:-translate-y-1 hover:shadow-md"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-100 text-violet-600">
+                    <RotateCcw size={19} />
+                  </div>
+
+                  <ArrowUpRight
+                    size={15}
+                    className="text-violet-400"
+                  />
+                </div>
+
+                <p className="mt-5 text-[11px] font-bold text-violet-700">
+                  Barang Retur
+                </p>
+
+                <p className="mt-1 text-[27px] font-extrabold text-[#102b66]">
+                  {returData.error
+                    ? "-"
+                    : formatNumber(
+                        returData.items.length
+                      )}
+                </p>
+
+                <p className="mt-1 text-[10px] text-violet-600">
+                  Data retur barang
+                </p>
+              </button>
+
+              {/* TRANSFER STOK */}
+              <button
+                type="button"
+                onClick={() =>
+                  router.push(
+                    "/inventory/transfer-stok"
+                  )
+                }
+                className="group rounded-2xl border border-cyan-100 bg-cyan-50/40 p-4 text-left transition hover:-translate-y-1 hover:shadow-md"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-100 text-cyan-600">
+                    <ArrowLeftRight size={19} />
+                  </div>
+
+                  <ArrowUpRight
+                    size={15}
+                    className="text-cyan-400"
+                  />
+                </div>
+
+                <p className="mt-5 text-[11px] font-bold text-cyan-700">
+                  Transfer Stok
+                </p>
+
+                <p className="mt-1 text-[27px] font-extrabold text-[#102b66]">
+                  {transferData.error
+                    ? "-"
+                    : formatNumber(
+                        transferData.items.length
+                      )}
+                </p>
+
+                <p className="mt-1 text-[10px] text-cyan-600">
+                  Perpindahan stok
+                </p>
               </button>
             </div>
-
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-              {kategori.length === 0 ? (
-                <div className="col-span-full py-5 text-center text-xs text-slate-400">
-                  Belum ada kategori.
-                </div>
-              ) : (
-                kategori.map((item, index) => {
-                  const itemIcon = getKategoriIcon(index);
-                  const Icon = itemIcon.icon;
-                  const aktif = filterKategori === item.nama;
-
-                  return (
-                    <div
-                      key={item.id}
-                      onClick={() =>
-                        setFilterKategori(aktif ? "" : item.nama)
-                      }
-                      className={`group flex cursor-pointer items-center gap-3 rounded-xl border px-3 py-3 transition ${
-                        aktif
-                          ? "border-blue-200 bg-blue-50 shadow-sm"
-                          : "border-slate-100 bg-white hover:-translate-y-0.5 hover:border-blue-100 hover:shadow-sm"
-                      }`}
-                    >
-                      <div
-                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${itemIcon.bg} ${itemIcon.text}`}
-                      >
-                        <Icon size={17} />
-                      </div>
-
-                      <div className="min-w-0">
-                        <p className="truncate text-[11px] font-semibold text-[#536b96]">
-                          {item.nama}
-                        </p>
-                        <p className="mt-0.5 text-[10px] text-slate-400">
-                          {getKategoriJumlah(item.nama)} produk
-                        </p>
-                      </div>
-
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          hapusKategori(item.id);
-                        }}
-                        className="ml-auto hidden shrink-0 rounded-md p-1 text-slate-300 transition hover:bg-red-50 hover:text-red-500 group-hover:block"
-                        title="Hapus kategori"
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    </div>
-                  );
-                })
-              )}
-            </div>
           </section>
 
-          {/* DAFTAR PRODUK */}
-          <section className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-[0_5px_20px_rgba(36,72,130,0.06)]">
-            <div className="flex flex-col gap-4 border-b border-slate-100 p-4 sm:p-5 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <h2 className="text-[16px] font-extrabold text-[#102b66]">
-                  Daftar Produk
-                </h2>
-                <p className="mt-1 text-[11px] text-[#7183a5]">
-                  Berikut adalah daftar seluruh produk yang tersedia.
-                </p>
-              </div>
-
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <div className="relative">
-                  <Search
-                    size={15}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Cari produk, kode, atau kategori..."
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-[11px] outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50 sm:w-[265px]"
-                  />
-                </div>
-
-                <div className="relative">
-                  <Filter
-                    size={14}
-                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"
-                  />
-                  <select
-                    value={filterKategori}
-                    onChange={(e) => setFilterKategori(e.target.value)}
-                    className="h-10 w-full appearance-none rounded-xl border border-slate-200 bg-white pl-9 pr-9 text-[11px] font-semibold text-slate-600 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50 sm:w-[170px]"
-                  >
-                    <option value="">Semua Kategori</option>
-                    {kategori.map((item) => (
-                      <option key={item.id} value={item.nama}>
-                        {item.nama}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown
-                    size={14}
-                    className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
-                  />
-                </div>
-
-                <button
-                  onClick={bukaTambah}
-                  className="flex h-10 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-[11px] font-bold text-white shadow-md shadow-blue-100 transition hover:-translate-y-0.5 hover:bg-blue-700"
-                >
-                  <Plus size={15} />
-                  Tambah Produk
-                </button>
-              </div>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[930px] text-left">
-                <thead className="bg-[#f7f9fd]">
-                  <tr>
-                    <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wide text-[#6d7fa3]">
-                      No
-                    </th>
-                    <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wide text-[#6d7fa3]">
-                      Kode Produk
-                    </th>
-                    <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wide text-[#6d7fa3]">
-                      Nama Produk
-                    </th>
-                    <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wide text-[#6d7fa3]">
-                      Kategori
-                    </th>
-                    <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wide text-[#6d7fa3]">
-                      Harga
-                    </th>
-                    <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wide text-[#6d7fa3]">
-                      Stok
-                    </th>
-                    <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wide text-[#6d7fa3]">
-                      Status
-                    </th>
-                    <th className="px-4 py-3 text-center text-[10px] font-bold uppercase tracking-wide text-[#6d7fa3]">
-                      Aksi
-                    </th>
-                  </tr>
-                </thead>
-
-                <tbody className="divide-y divide-slate-100">
-                  {loading ? (
-                    <tr>
-                      <td
-                        colSpan={8}
-                        className="px-5 py-14 text-center text-xs text-slate-400"
-                      >
-                        Memuat data...
-                      </td>
-                    </tr>
-                  ) : produkTampil.length === 0 ? (
-                    <tr>
-                      <td
-                        colSpan={8}
-                        className="px-5 py-14 text-center text-xs text-slate-400"
-                      >
-                        Belum ada data produk.
-                      </td>
-                    </tr>
-                  ) : (
-                    produkTampil.map((item, index) => {
-                      const status = getStatus(Number(item.stok));
-
-                      return (
-                        <tr
-                          key={item.id}
-                          className="transition hover:bg-[#f8fbff]"
-                        >
-                          <td className="px-4 py-3 text-[11px] font-medium text-[#536b96]">
-                            {(page - 1) * perPage + index + 1}
-                          </td>
-
-                          <td className="px-4 py-3 text-[11px] font-semibold text-[#506a9b]">
-                            {item.kode_produk}
-                          </td>
-
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-3">
-                              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
-                                <Package size={15} />
-                              </div>
-                              <span className="text-[11px] font-bold text-[#405a88]">
-                                {item.nama}
-                              </span>
-                            </div>
-                          </td>
-
-                          <td className="px-4 py-3">
-                            <span className="text-[11px] font-medium text-[#65799f]">
-                              {item.kategori || "-"}
-                            </span>
-                          </td>
-
-                          <td className="px-4 py-3 text-[11px] font-bold text-[#233b6e]">
-                            Rp {Number(item.harga).toLocaleString("id-ID")}
-                          </td>
-
-                          <td className="px-4 py-3 text-[11px] font-semibold text-[#536b96]">
-                            {item.stok}
-                          </td>
-
-                          <td className="px-4 py-3">
-                            <span
-                              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold ${status.className}`}
-                            >
-                              <span
-                                className={`h-1.5 w-1.5 rounded-full ${status.dot}`}
-                              />
-                              {status.label}
-                            </span>
-                          </td>
-
-                          <td className="px-4 py-3">
-                            <div className="flex justify-center gap-2">
-                              <button
-                                onClick={() => bukaEdit(item)}
-                                className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 text-blue-600 transition hover:bg-blue-600 hover:text-white"
-                                title="Edit"
-                              >
-                                <Pencil size={13} />
-                              </button>
-
-                              <button
-                                onClick={() => hapusProduk(item.id)}
-                                className="flex h-7 w-7 items-center justify-center rounded-lg bg-red-50 text-red-500 transition hover:bg-red-500 hover:text-white"
-                                title="Hapus"
-                              >
-                                <Trash2 size={13} />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="flex flex-col gap-3 border-t border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-[11px] text-[#6d7fa3]">
-                Menampilkan{" "}
-                <span className="font-semibold text-[#4f6691]">
-                  {produkFilter.length === 0
-                    ? 0
-                    : (page - 1) * perPage + 1}
-                  -
-                  {Math.min(page * perPage, produkFilter.length)}
-                </span>{" "}
-                dari{" "}
-                <span className="font-semibold text-[#4f6691]">
-                  {produkFilter.length}
-                </span>{" "}
-                data
-              </p>
-
-              <div className="flex items-center gap-1">
-                <button
-                  disabled={page === 1}
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-100 text-slate-400 transition hover:bg-blue-50 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  ‹
-                </button>
-
-                {Array.from({ length: totalPage }, (_, i) => i + 1)
-                  .slice(0, 5)
-                  .map((itemPage) => (
-                    <button
-                      key={itemPage}
-                      onClick={() => setPage(itemPage)}
-                      className={`flex h-8 w-8 items-center justify-center rounded-lg text-[11px] font-semibold transition ${
-                        page === itemPage
-                          ? "bg-blue-600 text-white shadow-md shadow-blue-100"
-                          : "border border-slate-100 bg-white text-[#6d7fa3] hover:bg-blue-50 hover:text-blue-600"
-                      }`}
-                    >
-                      {itemPage}
-                    </button>
-                  ))}
-
-                <button
-                  disabled={page === totalPage}
-                  onClick={() =>
-                    setPage((p) => Math.min(totalPage, p + 1))
-                  }
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-100 text-slate-400 transition hover:bg-blue-50 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  ›
-                </button>
-              </div>
-            </div>
-          </section>
-
-          <div className="h-5" />
+          {/* SPACING */}
+          <div className="h-6" />
         </div>
       </main>
-
-      {/* MODAL PRODUK */}
-      {showProduk && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#102b66]/30 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-              <div>
-                <h2 className="text-base font-bold text-[#102b66]">
-                  {editId ? "Edit Produk" : "Tambah Produk"}
-                </h2>
-                <p className="mt-1 text-[11px] text-slate-400">
-                  Isi data produk dengan lengkap
-                </p>
-              </div>
-
-              <button
-                onClick={() => {
-                  setShowProduk(false);
-                  resetForm();
-                }}
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <form onSubmit={simpanProduk} className="space-y-4 p-5">
-              <div>
-                <label className="mb-1.5 block text-xs font-semibold text-slate-600">
-                  Kode Produk
-                </label>
-                <input
-                  type="text"
-                  value={form.kode_produk}
-                  onChange={(e) =>
-                    setForm({ ...form, kode_produk: e.target.value })
-                  }
-                  placeholder="Contoh: PRD001"
-                  className="h-10 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50"
-                />
-              </div>
-
-              <div>
-                <label className="mb-1.5 block text-xs font-semibold text-slate-600">
-                  Nama Produk
-                </label>
-                <input
-                  type="text"
-                  value={form.nama}
-                  onChange={(e) =>
-                    setForm({ ...form, nama: e.target.value })
-                  }
-                  placeholder="Nama produk"
-                  className="h-10 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50"
-                />
-              </div>
-
-              <div>
-                <label className="mb-1.5 block text-xs font-semibold text-slate-600">
-                  Kategori
-                </label>
-                <select
-                  value={form.kategori_id}
-                  onChange={(e) =>
-                    setForm({ ...form, kategori_id: e.target.value })
-                  }
-                  className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50"
-                >
-                  <option value="">Pilih kategori</option>
-                  {kategori.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.nama}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-slate-600">
-                    Harga
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={form.harga}
-                    onChange={(e) =>
-                      setForm({ ...form, harga: e.target.value })
-                    }
-                    placeholder="0"
-                    className="h-10 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50"
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-slate-600">
-                    Stok
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={form.stok}
-                    onChange={(e) =>
-                      setForm({ ...form, stok: e.target.value })
-                    }
-                    placeholder="0"
-                    className="h-10 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50"
-                  />
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowProduk(false);
-                    resetForm();
-                  }}
-                  className="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-semibold text-slate-500 transition hover:bg-slate-50"
-                >
-                  Batal
-                </button>
-
-                <button
-                  type="submit"
-                  className="rounded-xl bg-blue-600 px-5 py-2.5 text-xs font-bold text-white shadow-md shadow-blue-100 transition hover:bg-blue-700"
-                >
-                  {editId ? "Simpan Perubahan" : "Tambah Produk"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL KATEGORI */}
-      {showKategori && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#102b66]/30 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-              <div>
-                <h2 className="text-base font-bold text-[#102b66]">
-                  Tambah Kategori
-                </h2>
-                <p className="mt-1 text-[11px] text-slate-400">
-                  Tambahkan kategori produk baru
-                </p>
-              </div>
-
-              <button
-                onClick={() => {
-                  setShowKategori(false);
-                  setNamaKategori("");
-                }}
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <form onSubmit={tambahKategori} className="p-5">
-              <label className="mb-1.5 block text-xs font-semibold text-slate-600">
-                Nama Kategori
-              </label>
-
-              <input
-                type="text"
-                value={namaKategori}
-                onChange={(e) => setNamaKategori(e.target.value)}
-                placeholder="Contoh: Makanan"
-                className="h-10 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50"
-              />
-
-              <div className="mt-5 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowKategori(false);
-                    setNamaKategori("");
-                  }}
-                  className="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-semibold text-slate-500 transition hover:bg-slate-50"
-                >
-                  Batal
-                </button>
-
-                <button
-                  type="submit"
-                  className="rounded-xl bg-blue-600 px-5 py-2.5 text-xs font-bold text-white shadow-md shadow-blue-100 transition hover:bg-blue-700"
-                >
-                  Simpan
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
