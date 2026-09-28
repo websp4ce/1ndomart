@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from "react";
 import SidebarWarehouse from "@/app/components/SidebarWarehouse";
+import HeaderWarehouse from "@/app/components/HeaderWarehouse";
 
 import {
-  Bell,
   CheckCircle2,
   ClipboardCheck,
   PackageCheck,
@@ -85,7 +85,6 @@ export default function PengelolaanPage() {
 
   async function loadData() {
     const res = await fetch("/api/warehouse/pengelolaan");
-
     const data = await res.json();
 
     if (data.success) {
@@ -129,10 +128,8 @@ export default function PengelolaanPage() {
     }
 
     alert(data.message);
-
     setShowQC(false);
     setSelectedPenerimaan(null);
-
     loadData();
   }
 
@@ -146,11 +143,6 @@ export default function PengelolaanPage() {
         lokasi: "A-01",
       }))
       .filter((item) => item.jumlah > 0);
-
-    /*
-     * Untuk tahap awal, Putaway mengambil
-     * jumlah dari detail QC pada backend.
-     */
 
     const res = await fetch("/api/warehouse/pengelolaan", {
       method: "POST",
@@ -173,10 +165,8 @@ export default function PengelolaanPage() {
     }
 
     alert(data.message);
-
     setShowPutaway(false);
     setSelectedQC(null);
-
     loadData();
   }
 
@@ -216,23 +206,9 @@ export default function PengelolaanPage() {
     }
 
     alert(data.message);
-
     setShowOpname(false);
-
     loadData();
   }
-
-  const filteredQC = qc.filter(
-    (item) =>
-      item.nomor_penerimaan
-        .toLowerCase()
-        .includes(search.toLowerCase()) ||
-      item.nomor_po.toLowerCase().includes(search.toLowerCase())
-  );
-
-  const filteredPutaway = putaway.filter((item) =>
-    String(item.qc_id).includes(search)
-  );
 
   const filteredOpname = opname.filter((item) =>
     item.nomor_opname.toLowerCase().includes(search.toLowerCase())
@@ -241,8 +217,6 @@ export default function PengelolaanPage() {
   const qcMenunggu = penerimaan.filter(
     (item) => item.status !== "Selesai"
   ).length;
-
-  const qcSelesai = qc.filter((item) => item.status === "Lulus").length;
 
   const putawaySelesai = putaway.filter(
     (item) => item.status === "Selesai"
@@ -257,73 +231,44 @@ export default function PengelolaanPage() {
       <SidebarWarehouse />
 
       <main className="min-w-0 flex-1">
-        {/* HEADER */}
-        <header className="flex h-[82px] items-center justify-between border-b border-slate-200 bg-white px-5 sm:px-8">
-          <div>
-            <p className="text-[11px] font-medium text-slate-400">
-              Warehouse Management
-            </p>
-
-            <h1 className="text-xl font-bold text-slate-900">
-              Pengelolaan Gudang
-            </h1>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <button className="relative rounded-xl border border-slate-200 bg-white p-2.5 text-slate-500 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-600">
-              <Bell size={18} />
-
-              <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-red-500" />
-            </button>
-
-            <div className="hidden items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 sm:flex">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-xs font-bold text-white">
-                WH
-              </div>
-
-              <div>
-                <p className="text-xs font-bold text-slate-700">
-                  Staff Warehouse
-                </p>
-
-                <p className="text-[9px] text-slate-400">
-                  Warehouse
-                </p>
-              </div>
-            </div>
-          </div>
-        </header>
+        <HeaderWarehouse
+          title="Pengelolaan Gudang"
+          subtitle="Warehouse"
+        />
 
         <div className="p-5 sm:p-8">
-          {/* HERO */}
-          <section className="relative mb-6 overflow-hidden rounded-3xl bg-gradient-to-r from-blue-600 via-blue-500 to-cyan-500 px-6 py-7 text-white shadow-lg shadow-blue-100 sm:px-8">
+
+          {/* HERO - DIPERKECIL */}
+          <section className="relative mb-6 overflow-hidden rounded-3xl bg-gradient-to-r from-blue-600 via-blue-500 to-cyan-500 px-6 py-5 text-white shadow-lg shadow-blue-100 sm:px-7 sm:py-6">
             <div className="relative z-10 max-w-2xl">
-              <p className="mb-2 text-xs font-medium text-blue-100">
+              <p className="mb-1.5 text-[11px] font-medium text-blue-100">
                 Warehouse Operations
               </p>
 
-              <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">
+              <h2 className="text-xl font-bold tracking-tight sm:text-2xl">
                 Pengelolaan Gudang
               </h2>
 
-              <p className="mt-2 max-w-xl text-xs leading-5 text-blue-50 sm:text-sm">
+              <p className="mt-1.5 max-w-xl text-[11px] leading-5 text-blue-50 sm:text-xs">
                 Kelola proses Quality Check, Putaway, dan Stock Opname
                 dalam satu halaman warehouse.
               </p>
             </div>
 
-            <div className="absolute -right-8 -top-12 h-40 w-40 rounded-full bg-white/10" />
-            <div className="absolute -bottom-20 right-20 h-48 w-48 rounded-full bg-white/10" />
+            <div className="absolute -right-6 -top-10 h-28 w-28 rounded-full bg-white/10" />
 
-            <div className="absolute right-8 top-1/2 hidden -translate-y-1/2 md:block">
-              <div className="flex h-24 w-24 items-center justify-center rounded-3xl bg-white/15 backdrop-blur-sm">
-                <Boxes size={46} strokeWidth={1.5} />
+            <div className="absolute -bottom-14 right-16 h-36 w-36 rounded-full bg-white/10" />
+
+            <div className="absolute right-7 top-1/2 hidden -translate-y-1/2 md:block">
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/15 backdrop-blur-sm">
+                <Boxes size={32} strokeWidth={1.5} />
               </div>
             </div>
           </section>
 
           {/* SUMMARY */}
           <div className="mb-6 grid grid-cols-2 gap-4 xl:grid-cols-4">
+
             <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
               <div className="mb-4 flex items-center justify-between">
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600">

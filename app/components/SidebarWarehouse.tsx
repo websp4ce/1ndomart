@@ -9,6 +9,7 @@ import {
   PackageOpen,
   Warehouse,
   BarChart3,
+  ArrowLeft,
 } from "lucide-react";
 
 const navItems = [
@@ -53,7 +54,7 @@ export default function SidebarWarehouse() {
       </div>
 
       {/* MENU */}
-      <nav className="flex-1 px-2 py-5 md:px-3">
+      <nav className="flex-1 overflow-y-auto px-2 py-5 md:px-3">
         <p className="mb-3 hidden px-3 text-[10px] font-bold uppercase tracking-wider text-slate-400 md:block">
           Menu Warehouse
         </p>
@@ -97,8 +98,24 @@ export default function SidebarWarehouse() {
         </div>
       </nav>
 
-      {/* FOOTER */}
+      {/* KEMBALI + FOOTER */}
       <div className="shrink-0 border-t border-slate-100 p-2 md:p-3">
+        <Link
+          href="/dashboard/admin"
+          title="Kembali ke Admin"
+          className="group mb-2 flex h-11 w-full items-center justify-center gap-3 rounded-xl bg-blue-50 px-2 text-[12px] font-semibold text-blue-600 transition-all hover:bg-blue-600 hover:text-white md:justify-start md:px-3"
+        >
+          <ArrowLeft
+            size={18}
+            strokeWidth={1.8}
+            className="shrink-0"
+          />
+
+          <span className="hidden md:block">
+            Kembali ke Admin
+          </span>
+        </Link>
+
         <div className="rounded-xl bg-slate-50 px-2 py-3 text-center md:px-3 md:text-left">
           <p className="hidden text-[10px] text-slate-400 md:block">
             Sistem Warehouse
