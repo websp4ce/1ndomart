@@ -12,7 +12,6 @@ import {
   Plus,
   CreditCard,
   ShoppingCart,
-  Bell,
   ShieldCheck,
   Trash2,
   ChevronRight,
@@ -45,10 +44,6 @@ type ItemKeranjang = {
 // Kunci localStorage ini HARUS SAMA PERSIS dengan yang dipakai di
 // halaman scan barcode, supaya keranjangnya jadi satu keranjang yang sama.
 const KERANJANG_KEY = 'keranjangAktif';
-
-// Kunci ini HARUS SAMA dengan yang dipakai halaman Login
-// (localStorage.setItem('indomart_user', ...)).
-const USER_KEY = 'indomart_user';
 
 function bacaKeranjang(): ItemKeranjang[] {
   if (typeof window === 'undefined') return [];
@@ -86,7 +81,6 @@ export default function TransaksiPenjualanPage() {
   const router = useRouter();
   const [query, setQuery] = useState('');
   const [kategoriAktif, setKategoriAktif] = useState<string>('Semua');
-  const [namaUser, setNamaUser] = useState('Kasir');
   const [keranjang, setKeranjang] = useState<ItemKeranjang[]>([]);
 
   // Data dari API (dulu array dummy: produkDummy & kategoriList)
@@ -96,18 +90,6 @@ export default function TransaksiPenjualanPage() {
   const [errorMuat, setErrorMuat] = useState('');
 
   const kategoriScrollRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(USER_KEY);
-      if (raw) {
-        const user = JSON.parse(raw);
-        if (user?.nama) setNamaUser(user.nama);
-      }
-    } catch {
-      // biarkan default "Kasir"
-    }
-  }, []);
 
   // Ambil produk & kategori dari API begitu halaman dibuka.
   useEffect(() => {
@@ -232,31 +214,6 @@ export default function TransaksiPenjualanPage() {
       <SidebarKasir />
 
       <div className="main">
-        <header className="topbar">
-          <div className="topbar-search">
-            <Search size={17} strokeWidth={2} color="#8794ab" />
-            <input
-              type="text"
-              placeholder="Cari produk, barcode, atau kategori..."
-            />
-          </div>
-
-          <div className="topbar-right">
-            <button className="icon-btn" aria-label="Notifikasi">
-              <Bell size={18} strokeWidth={1.8} color="#4b5875" />
-              <span className="dot" />
-            </button>
-
-            <div className="user-block">
-              <div className="avatar">{namaUser.charAt(0).toUpperCase()}</div>
-              <div>
-                <div className="user-name">{namaUser}</div>
-                <div className="user-role">Kasir</div>
-              </div>
-            </div>
-          </div>
-        </header>
-
         <main className="content">
           <div className="panel-row">
             <div className="left-col">
@@ -499,97 +456,6 @@ export default function TransaksiPenjualanPage() {
           min-width: 0;
           display: flex;
           flex-direction: column;
-        }
-
-        .topbar {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 20px;
-          background: #ffffff;
-          border-radius: 16px;
-          margin: 18px 20px 0;
-          padding: 12px 18px;
-          box-shadow: 0 8px 20px rgba(16, 41, 92, 0.05);
-        }
-
-        .topbar-search {
-          flex: 1;
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          background: #f4f7fc;
-          border-radius: 12px;
-          padding: 10px 16px;
-          max-width: 480px;
-        }
-
-        .topbar-search input {
-          flex: 1;
-          border: none;
-          outline: none;
-          background: transparent;
-          font-size: 13px;
-          color: #16233d;
-        }
-
-        .topbar-search input::placeholder {
-          color: #a5aec2;
-        }
-
-        .topbar-right {
-          display: flex;
-          align-items: center;
-          gap: 16px;
-          flex-shrink: 0;
-        }
-
-        .icon-btn {
-          position: relative;
-          background: none;
-          border: none;
-          cursor: pointer;
-          display: flex;
-        }
-
-        .icon-btn .dot {
-          position: absolute;
-          top: -3px;
-          right: -3px;
-          width: 8px;
-          height: 8px;
-          border-radius: 50%;
-          background: #e2231a;
-          border: 2px solid #ffffff;
-        }
-
-        .user-block {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-
-        .avatar {
-          width: 34px;
-          height: 34px;
-          border-radius: 50%;
-          background: #dfeaff;
-          color: #1646a0;
-          font-weight: 800;
-          font-size: 13px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-
-        .user-name {
-          font-size: 12.5px;
-          font-weight: 700;
-        }
-
-        .user-role {
-          font-size: 10.5px;
-          color: #8794ab;
         }
 
         .content {

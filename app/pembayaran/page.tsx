@@ -5,10 +5,6 @@ import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import SidebarKasir from '../components/SidebarKasir';
 import {
-  Store,
-  Bell,
-  User,
-  ChevronDown,
   Wallet,
   Banknote,
   QrCode,
@@ -112,7 +108,6 @@ function formatWaktu(detik: number): string {
 
 export default function PembayaranPage() {
   const router = useRouter();
-  const [namaUser, setNamaUser] = useState('Kasir');
   const [kasirId, setKasirId] = useState<string | null>(null);
   const [metodeAktif, setMetodeAktif] = useState<MetodeId | null>(null);
   const [kodePromo, setKodePromo] = useState('');
@@ -139,27 +134,26 @@ export default function PembayaranPage() {
   const [sisaWaktu, setSisaWaktu] = useState(5 * 60);
 
   useEffect(() => {
-  try {
-    const raw = localStorage.getItem('indomart_user'); // sesuai key dari halaman login
-    if (raw) {
-      const user = JSON.parse(raw);
-      if (user?.nama) setNamaUser(user.nama);
-      if (user?.email) setKasirId(user.email); // pakai email sebagai identitas kasir
+    try {
+      const raw = localStorage.getItem('indomart_user'); // sesuai key dari halaman login
+      if (raw) {
+        const user = JSON.parse(raw);
+        if (user?.email) setKasirId(user.email); // pakai email sebagai identitas kasir
+      }
+    } catch {
+      // biarkan kasirId null, nanti ditangani validasi saat simpan transaksi
     }
-  } catch {
-    // biarkan default "Kasir"
-  }
 
-  try {
-    const rawKeranjang = localStorage.getItem('keranjangAktif');
-    if (rawKeranjang) {
-      const data = JSON.parse(rawKeranjang);
-      if (Array.isArray(data)) setItemBelanja(data);
+    try {
+      const rawKeranjang = localStorage.getItem('keranjangAktif');
+      if (rawKeranjang) {
+        const data = JSON.parse(rawKeranjang);
+        if (Array.isArray(data)) setItemBelanja(data);
+      }
+    } catch {
+      // kalau gagal dibaca, biarkan keranjang kosong
     }
-  } catch {
-    // kalau gagal dibaca, biarkan keranjang kosong
-  }
-}, []);
+  }, []);
 
   const jumlahItem = itemBelanja.length;
   const totalBelanja = itemBelanja.reduce((sum, item) => sum + item.harga * item.qty, 0);
@@ -337,36 +331,6 @@ export default function PembayaranPage() {
       <SidebarKasir />
 
       <div className="main">
-        <header className="topbar">
-          <div className="topbar-left">
-            <div className="store-icon">
-              <Store size={19} strokeWidth={1.9} color="#2f80ed" />
-            </div>
-            <div>
-              <div className="store-name">Indomaret</div>
-              <div className="store-sub">Kasir / Pembayaran</div>
-            </div>
-          </div>
-
-          <div className="topbar-right">
-            <button className="icon-btn" aria-label="Notifikasi">
-              <Bell size={18} strokeWidth={1.8} color="#4b5875" />
-              <span className="dot" />
-            </button>
-
-            <div className="user-block">
-              <div className="avatar">
-                <User size={16} strokeWidth={2} color="#ffffff" />
-              </div>
-              <div>
-                <div className="user-name">{namaUser}</div>
-                <div className="user-role">Kasir</div>
-              </div>
-              <ChevronDown size={15} strokeWidth={2} color="#8794ab" />
-            </div>
-          </div>
-        </header>
-
         <main className="content">
           <div className="page-header">
             <div className="page-icon">
@@ -868,100 +832,6 @@ export default function PembayaranPage() {
           min-width: 0;
           display: flex;
           flex-direction: column;
-        }
-
-        .topbar {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          background: #ffffff;
-          border-bottom: 1px solid #eaeef5;
-          padding: 12px 24px;
-        }
-
-        .topbar-left {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-        }
-
-        .store-icon {
-          width: 36px;
-          height: 36px;
-          border-radius: 9px;
-          background: #eaf2ff;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          flex-shrink: 0;
-        }
-
-        .store-name {
-          font-weight: 800;
-          font-size: 13.5px;
-          color: #10295c;
-          line-height: 1.25;
-        }
-
-        .store-sub {
-          font-size: 10.5px;
-          color: #8794ab;
-        }
-
-        .topbar-right {
-          display: flex;
-          align-items: center;
-          gap: 18px;
-        }
-
-        .icon-btn {
-          position: relative;
-          background: none;
-          border: none;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-
-        .icon-btn .dot {
-          position: absolute;
-          top: -1px;
-          right: -1px;
-          width: 6px;
-          height: 6px;
-          border-radius: 50%;
-          background: #e2231a;
-        }
-
-        .user-block {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          cursor: pointer;
-        }
-
-        .avatar {
-          width: 34px;
-          height: 34px;
-          border-radius: 50%;
-          background: #10295c;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          flex-shrink: 0;
-        }
-
-        .user-name {
-          font-size: 12.5px;
-          font-weight: 700;
-          color: #16233d;
-          line-height: 1.25;
-        }
-
-        .user-role {
-          font-size: 10.5px;
-          color: #8794ab;
         }
 
         .content {

@@ -4,20 +4,20 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import SidebarKasir from '../../components/SidebarKasir';
+import RiwayatTransaksiPanel from '../../components/RiwayatTransaksiPanel';
 import {
   Store,
   Wallet,
-  Bell,
   LogOut,
   Package,
   TrendingUp,
-  Clock as ClockIcon,
   CalendarDays,
-  BarChart3,
+  Clock as ClockIcon,
   Box,
-  ChevronDown,
   ChevronRight,
   ArrowRight,
+  History,
+  Sparkles,
 } from 'lucide-react';
 
 type ProdukTerlaris = {
@@ -26,40 +26,26 @@ type ProdukTerlaris = {
   terjual: number;
 };
 
-const produkTerlarisDummy: ProdukTerlaris[] = [
-  { no: 1, nama: 'Indomie Goreng', terjual: 245 },
-  { no: 2, nama: 'Aqua 600ml', terjual: 198 },
-  { no: 3, nama: 'Roma Malkist', terjual: 176 },
-  { no: 4, nama: 'Segitiga Biru', terjual: 142 },
-  { no: 5, nama: 'Coca-Cola 1.5L', terjual: 120 },
-];
+type Ringkasan = {
+  hariIni: {
+    totalPenjualan: number;
+    jumlahTransaksi: number;
+    jumlahItem: number;
+  };
+  keseluruhan: {
+    totalPenjualan: number;
+    jumlahTransaksi: number;
+  };
+};
 
-const penjualanMingguDummy = [
-  12_300_000, 14_200_000, 11_800_000, 16_700_000, 10_500_000, 12_100_000,
-  17_600_000,
-];
-
-function getMondayOfWeek(date: Date): Date {
-  const d = new Date(date);
-  const day = d.getDay();
-  const diffKeSenin = day === 0 ? -6 : 1 - day;
-  d.setDate(d.getDate() + diffKeSenin);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-function getWeekDates(baseDate: Date): Date[] {
-  const senin = getMondayOfWeek(baseDate);
-  return Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(senin);
-    d.setDate(senin.getDate() + i);
-    return d;
-  });
-}
-
-function formatTanggalPendek(d: Date): string {
-  return d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short' });
-}
+type TransaksiHariIni = {
+  id: number;
+  nomor: string;
+  waktu: string;
+  jumlahItem: number;
+  total: number;
+  status: string;
+};
 
 function formatTanggalPanjang(d: Date): string {
   return d.toLocaleDateString('id-ID', {
@@ -69,28 +55,36 @@ function formatTanggalPanjang(d: Date): string {
   });
 }
 
-function formatJam(d: Date): string {
-  return d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+function formatJamSekarang(d: Date): string {
+  return d.toLocaleTimeString('id-ID', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function formatJamTransaksi(iso: string): string {
+  return new Date(iso).toLocaleTimeString('id-ID', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 function formatRupiah(angka: number): string {
   return 'Rp ' + angka.toLocaleString('id-ID');
 }
 
-function formatJutaAxis(angka: number): string {
-  if (angka === 0) return '0';
-  return `${(angka / 1_000_000).toLocaleString('id-ID')}jt`;
-}
-
-function formatRupiahJutaSingkat(angka: number): string {
-  const jt = angka / 1_000_000;
-  return `Rp ${jt.toLocaleString('id-ID', { maximumFractionDigits: 1 })} jt`;
-}
+const MEDALI = ['#f5b53d', '#b9c2d0', '#d99a5b'];
 
 export default function DashboardKasirPage() {
   const router = useRouter();
   const [sekarang, setSekarang] = useState<Date | null>(null);
   const [namaUser, setNamaUser] = useState('Kasir');
+
+  const [ringkasan, setRingkasan] = useState<Ringkasan | null>(null);
+  const [produkTerlaris, setProdukTerlaris] = useState<ProdukTerlaris[]>([]);
+  const [transaksiHariIni, setTransaksiHariIni] = useState<TransaksiHariIni[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showRiwayat, setShowRiwayat] = useState(false);
 
   useEffect(() => {
     setSekarang(new Date());
@@ -109,35 +103,48 @@ export default function DashboardKasirPage() {
     return () => clearInterval(interval);
   }, []);
 
-const handleLogout = async () => {
-  try {
-    await fetch('/api/auth/kasir-logout', {
-      method: 'POST',
-    });
+  useEffect(() => {
+    async function muatSemua() {
+      setLoading(true);
 
-    localStorage.removeItem('currentUser');
-  } catch {
-    // abaikan error logout
-  }
+      try {
+        const [resRingkasan, resTerlaris, resTransaksi] = await Promise.all([
+          fetch('/api/dashboard/summary'),
+          fetch('/api/dashboard/produk-terlaris?limit=5'),
+          fetch('/api/transactions'),
+        ]);
 
-  router.push('/login');
-};
+        if (resRingkasan.ok) {
+          setRingkasan(await resRingkasan.json());
+        }
 
-  const tanggalMinggu = getWeekDates(sekarang ?? new Date());
-  const nilaiPenjualan = penjualanMingguDummy;
+        if (resTerlaris.ok) {
+          setProdukTerlaris(await resTerlaris.json());
+        }
 
-  const maxNilai = Math.max(...nilaiPenjualan);
-  const skalaMax = Math.max(5_000_000, Math.ceil(maxNilai / 5_000_000) * 5_000_000);
-  const jumlahTick = 5;
-  const tickValues = Array.from({ length: jumlahTick }, (_, i) =>
-    Math.round((skalaMax / (jumlahTick - 1)) * i)
-  ).reverse();
+        if (resTransaksi.ok) {
+          setTransaksiHariIni(await resTransaksi.json());
+        }
+      } catch (err) {
+        console.error('Gagal memuat data dashboard:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
 
-  const totalTransaksiHariIni = 48;
-  const totalRupiahHariIni = 12_450_000;
-  const jumlahItemTerjual = 248;
-  const rataRataPerTransaksi = Math.round(totalRupiahHariIni / totalTransaksiHariIni);
-  const transaksiPending = 2;
+    muatSemua();
+  }, []);
+
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/kasir-logout', { method: 'POST' });
+      localStorage.removeItem('currentUser');
+    } catch {
+      // abaikan error logout
+    }
+
+    router.push('/login');
+  };
 
   return (
     <div className="wrapper">
@@ -147,8 +154,9 @@ const handleLogout = async () => {
         <header className="topbar">
           <div className="topbar-left">
             <div className="store-icon">
-              <Store size={19} strokeWidth={1.9} color="#2f80ed" />
+              <Store size={20} strokeWidth={1.8} color="#ffffff" />
             </div>
+
             <div>
               <div className="store-name">Indomaret</div>
               <div className="store-sub">Toko Pusat</div>
@@ -156,13 +164,28 @@ const handleLogout = async () => {
           </div>
 
           <div className="topbar-right">
-            <button className="icon-btn" aria-label="Notifikasi">
-              <Bell size={18} strokeWidth={1.8} color="#4b5875" />
-              <span className="dot" />
-            </button>
+            {/* Tanggal dan jam dipindahkan ke sini */}
+            <div className="topbar-datetime">
+              <div className="datetime-item">
+                <CalendarDays size={15} strokeWidth={1.8} />
+                <span>
+                  {sekarang ? formatTanggalPanjang(sekarang) : '...'}
+                </span>
+              </div>
+
+              <div className="datetime-item">
+                <ClockIcon size={15} strokeWidth={1.8} />
+                <span>
+                  {sekarang ? formatJamSekarang(sekarang) : '...'}
+                </span>
+              </div>
+            </div>
 
             <div className="user-block">
-              <div className="avatar">{namaUser.charAt(0).toUpperCase()}</div>
+              <div className="avatar">
+                {namaUser.charAt(0).toUpperCase()}
+              </div>
+
               <div>
                 <div className="user-name">{namaUser}</div>
                 <div className="user-role">Kasir</div>
@@ -175,141 +198,150 @@ const handleLogout = async () => {
               title="Logout"
               onClick={handleLogout}
             >
-              <LogOut size={15} strokeWidth={2.1} color="#2f80ed" />
+              <LogOut size={15} strokeWidth={2.1} />
             </button>
           </div>
         </header>
 
         <main className="content">
-          <div className="page-title-row">
-            <div>
-              <h1>Dashboard Kasir</h1>
-              <p>Selamat datang, {namaUser}! Semoga hari ini penuh transaksi.</p>
-            </div>
-
-            <div className="badges">
-              <span className="badge">
-                <CalendarDays size={14} strokeWidth={1.8} color="#37415a" />
-                {sekarang ? formatTanggalPanjang(sekarang) : '...'}
-              </span>
-              <span className="badge">
-                <ClockIcon size={14} strokeWidth={1.8} color="#37415a" />
-                {sekarang ? formatJam(sekarang) : '...'}
-              </span>
-            </div>
-          </div>
-
           <div className="stat-grid">
             <div className="stat-card blue">
+              <div className="stat-glow" />
+
               <div className="stat-icon">
-                <Wallet size={18} strokeWidth={1.9} color="#ffffff" />
+                <Wallet
+                  size={19}
+                  strokeWidth={1.9}
+                  color="#ffffff"
+                />
               </div>
-              <div className="stat-label">Total Transaksi Hari Ini</div>
-              <div className="stat-value">{formatRupiah(totalRupiahHariIni)}</div>
-              <div className="stat-sub">{totalTransaksiHariIni} transaksi</div>
+
+              <div className="stat-label">
+                Total Penjualan Hari Ini
+              </div>
+
+              <div className="stat-value">
+                {loading
+                  ? '...'
+                  : formatRupiah(
+                      ringkasan?.hariIni.totalPenjualan ?? 0
+                    )}
+              </div>
+
+              <div className="stat-sub">
+                {loading
+                  ? ''
+                  : `${ringkasan?.hariIni.jumlahTransaksi ?? 0} transaksi`}
+              </div>
             </div>
 
             <div className="stat-card orange">
+              <div className="stat-glow" />
+
               <div className="stat-icon">
-                <Package size={18} strokeWidth={1.9} color="#ffffff" />
+                <Package
+                  size={19}
+                  strokeWidth={1.9}
+                  color="#ffffff"
+                />
               </div>
-              <div className="stat-label">Jumlah Item Terjual</div>
-              <div className="stat-value">{jumlahItemTerjual}</div>
-              <div className="stat-sub">produk</div>
+
+              <div className="stat-label">
+                Jumlah Item Terjual
+              </div>
+
+              <div className="stat-value">
+                {loading
+                  ? '...'
+                  : ringkasan?.hariIni.jumlahItem ?? 0}
+              </div>
+
+              <div className="stat-sub">
+                item terjual hari ini
+              </div>
             </div>
 
             <div className="stat-card green">
-              <div className="stat-icon">
-                <TrendingUp size={18} strokeWidth={1.9} color="#ffffff" />
-              </div>
-              <div className="stat-label">Rata-rata per Transaksi</div>
-              <div className="stat-value">{formatRupiah(rataRataPerTransaksi)}</div>
-              <div className="stat-sub">&nbsp;</div>
-            </div>
+              <div className="stat-glow" />
 
-            <div className="stat-card red">
               <div className="stat-icon">
-                <ClockIcon size={18} strokeWidth={1.9} color="#ffffff" />
+                <TrendingUp
+                  size={19}
+                  strokeWidth={1.9}
+                  color="#ffffff"
+                />
               </div>
-              <div className="stat-label">Transaksi Pending</div>
-              <div className="stat-value">{transaksiPending}</div>
-              <div className="stat-sub">transaksi</div>
+
+              <div className="stat-label">
+                Total Penjualan Keseluruhan
+              </div>
+
+              <div className="stat-value">
+                {loading
+                  ? '...'
+                  : formatRupiah(
+                      ringkasan?.keseluruhan.totalPenjualan ?? 0
+                    )}
+              </div>
+
+              <div className="stat-sub-row">
+                <span className="stat-sub">
+                  {loading
+                    ? ''
+                    : `${ringkasan?.keseluruhan.jumlahTransaksi ?? 0} transaksi`}
+                </span>
+
+                <button
+                  className="lihat-riwayat-btn"
+                  onClick={() => setShowRiwayat(true)}
+                >
+                  <History size={12} strokeWidth={2.2} />
+                  Lihat Riwayat
+                </button>
+              </div>
             </div>
           </div>
 
-          <div className="bottom-grid">
-            <div className="panel chart-panel">
-              <div className="panel-head">
-                <div className="panel-title">
-                  <div className="panel-icon blue-tint">
-                    <BarChart3 size={16} strokeWidth={2} color="#2f80ed" />
-                  </div>
-                  <h2>Grafik Penjualan (7 Hari Terakhir)</h2>
-                </div>
-                <button className="dropdown-pill" type="button">
-                  <CalendarDays size={13} strokeWidth={1.8} color="#37415a" />
-                  7 Hari Terakhir
-                  <ChevronDown size={13} strokeWidth={2} color="#8794ab" />
-                </button>
-              </div>
-
-              <div className="chart">
-                <div className="chart-axis">
-                  {tickValues.map((v) => (
-                    <span key={v}>{formatJutaAxis(v)}</span>
-                  ))}
+          <div className="panel table-panel">
+            <div className="panel-head">
+              <div className="panel-title">
+                <div className="panel-icon blue-tint">
+                  <Box
+                    size={16}
+                    strokeWidth={2}
+                    color="#4f6bed"
+                  />
                 </div>
 
-                <div className="chart-bars">
-                  {tanggalMinggu.map((tgl, i) => {
-                    const nilai = nilaiPenjualan[i] ?? 0;
-                    const tinggiPersen = (nilai / skalaMax) * 100;
-                    return (
-                      <div className="bar-col" key={tgl.toISOString()}>
-                        <div className="bar-track">
-                          <div
-                            className="bar-fill"
-                            style={{ height: `${tinggiPersen}%` }}
-                            title={formatRupiah(nilai)}
-                          >
-                            <span className="bar-value">
-                              {formatRupiahJutaSingkat(nilai)}
-                            </span>
-                          </div>
-                        </div>
-                        <span className="bar-label">{formatTanggalPendek(tgl)}</span>
-                      </div>
-                    );
-                  })}
+                <div>
+                  <h2>Produk Terlaris</h2>
+                  <p className="panel-sub">
+                    Ranking penjualan produk
+                  </p>
                 </div>
               </div>
+
+              <Link
+                href="/laporan-penjualan"
+                className="lihat-semua-link"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  color: '#4f6bed',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  textDecoration: 'none',
+                  whiteSpace: 'nowrap',
+                  flexShrink: 0,
+                }}
+              >
+                Lihat Semua
+                <ArrowRight size={14} strokeWidth={2} />
+              </Link>
             </div>
 
-            <div className="panel table-panel">
-              <div className="panel-head">
-                <div className="panel-title">
-                  <div className="panel-icon blue-tint">
-                    <Box size={16} strokeWidth={2} color="#2f80ed" />
-                  </div>
-                  <h2>Produk Terlaris</h2>
-                </div>
-          <Link
-  href="/laporan-penjualan"
-  style={{
-    color: '#2f80ed',
-    fontSize: '12px',
-    fontWeight: 700,
-    textDecoration: 'none',
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: '6px',
-  }}
->
-  Lihat Semua
-  <ArrowRight size={14} strokeWidth={2} />
-</Link>
-              </div>
-
+            <div className="table-scroll">
               <table>
                 <thead>
                   <tr>
@@ -319,34 +351,169 @@ const handleLogout = async () => {
                     <th className="chevron-col" />
                   </tr>
                 </thead>
+
                 <tbody>
-                  {produkTerlarisDummy.map((p) => (
+                  {produkTerlaris.map((p) => (
                     <tr key={p.no}>
                       <td>
-                        <span className="no-badge">{p.no}</span>
+                        <span
+                          className="no-badge"
+                          style={
+                            MEDALI[p.no - 1]
+                              ? {
+                                  background: MEDALI[p.no - 1],
+                                  color: '#ffffff',
+                                }
+                              : undefined
+                          }
+                        >
+                          {p.no}
+                        </span>
                       </td>
+
                       <td>{p.nama}</td>
-                      <td className="right">{p.terjual}</td>
+
+                      <td className="right">
+                        <span className="terjual-pill">
+                          {p.terjual} terjual
+                        </span>
+                      </td>
+
                       <td className="chevron-col">
-                        <ChevronRight size={15} strokeWidth={2} color="#c4cbdb" />
+                        <ChevronRight
+                          size={15}
+                          strokeWidth={2}
+                          color="#c4cbdb"
+                        />
                       </td>
                     </tr>
                   ))}
+
+                  {!loading && produkTerlaris.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={4}
+                        className="kosong-text"
+                      >
+                        Belum ada penjualan.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
+            </div>
+          </div>
 
+          <div className="panel riwayat-panel">
+            <div className="panel-head">
+              <div className="panel-title">
+                <div className="panel-icon blue-tint">
+                  <ClockIcon
+                    size={16}
+                    strokeWidth={2}
+                    color="#4f6bed"
+                  />
+                </div>
+
+                <div>
+                  <h2>Riwayat Transaksi Hari Ini</h2>
+                  <p className="panel-sub">
+                    Daftar transaksi yang sudah selesai
+                  </p>
+                </div>
+              </div>
+
+              <button
+                className="lihat-semua-link"
+                onClick={() => setShowRiwayat(true)}
+                type="button"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  color: '#4f6bed',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  flexShrink: 0,
+                }}
+              >
+                Lihat Semua
+                <ArrowRight size={14} strokeWidth={2} />
+              </button>
+            </div>
+
+            <div className="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>No. Transaksi</th>
+                    <th>Waktu</th>
+                    <th className="right">Jumlah Item</th>
+                    <th className="right">Total</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {transaksiHariIni.map((t) => (
+                    <tr key={t.id}>
+                      <td className="trx-nomor-cell">
+                        {t.nomor}
+                      </td>
+
+                      <td>
+                        {formatJamTransaksi(t.waktu)}
+                      </td>
+
+                      <td className="right">
+                        {t.jumlahItem} item
+                      </td>
+
+                      <td className="right">
+                        {formatRupiah(t.total)}
+                      </td>
+
+                      <td>
+                        <span className="status-pill">
+                          {t.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+
+                  {!loading && transaksiHariIni.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={5}
+                        className="kosong-text"
+                      >
+                        Belum ada transaksi hari ini.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
         </main>
       </div>
 
+      <RiwayatTransaksiPanel
+        open={showRiwayat}
+        onClose={() => setShowRiwayat(false)}
+      />
+
       <style jsx>{`
         .wrapper {
           display: flex;
           min-height: 100vh;
-          background: #f4f6fb;
+          background: #f5f7fb;
           font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-          color: #16233d;
+          color: #182136;
         }
 
         .main {
@@ -361,43 +528,67 @@ const handleLogout = async () => {
           align-items: center;
           justify-content: space-between;
           background: #ffffff;
-          border-bottom: 1px solid #eaeef5;
-          padding: 12px 24px;
+          border-bottom: 1px solid #edf0f7;
+          padding: 14px 28px;
         }
 
         .topbar-left {
           display: flex;
           align-items: center;
-          gap: 10px;
+          gap: 12px;
         }
 
         .store-icon {
-          width: 36px;
-          height: 36px;
-          border-radius: 9px;
-          background: #eaf2ff;
+          width: 38px;
+          height: 38px;
+          border-radius: 12px;
+          background: linear-gradient(
+            135deg,
+            #5b7cf5 0%,
+            #3654d6 100%
+          );
           display: flex;
           align-items: center;
           justify-content: center;
           flex-shrink: 0;
+          box-shadow: 0 6px 14px rgba(59, 92, 219, 0.28);
         }
 
         .store-name {
           font-weight: 800;
-          font-size: 13.5px;
-          color: #10295c;
+          font-size: 14px;
+          color: #101a33;
           line-height: 1.25;
+          letter-spacing: -0.2px;
         }
 
         .store-sub {
-          font-size: 10.5px;
-          color: #8794ab;
+          font-size: 11px;
+          color: #96a1b8;
         }
 
         .topbar-right {
           display: flex;
           align-items: center;
+          gap: 18px;
+        }
+
+        .topbar-datetime {
+          display: flex;
+          align-items: center;
           gap: 16px;
+          color: #182136;
+          margin-right: 2px;
+        }
+
+        .datetime-item {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 12px;
+          font-weight: 700;
+          color: #182136;
+          white-space: nowrap;
         }
 
         .icon-btn {
@@ -408,44 +599,41 @@ const handleLogout = async () => {
           display: flex;
           align-items: center;
           justify-content: center;
+          color: #5b6478;
         }
 
         .icon-btn.round {
-          width: 32px;
-          height: 32px;
+          width: 34px;
+          height: 34px;
           border-radius: 50%;
-          background: #eaf2ff;
-          transition: background 0.15s ease;
+          background: #eef2ff;
+          color: #3654d6;
+          transition: background 0.15s ease, transform 0.15s ease;
         }
 
         .icon-btn.round:hover {
-          background: #d7e8ff;
-        }
-
-        .icon-btn .dot {
-          position: absolute;
-          top: -1px;
-          right: -1px;
-          width: 6px;
-          height: 6px;
-          border-radius: 50%;
-          background: #e2231a;
+          background: #dfe6ff;
+          transform: translateY(-1px);
         }
 
         .user-block {
           display: flex;
           align-items: center;
-          gap: 8px;
+          gap: 9px;
         }
 
         .avatar {
-          width: 32px;
-          height: 32px;
+          width: 34px;
+          height: 34px;
           border-radius: 50%;
-          background: #dfeaff;
-          color: #1646a0;
+          background: linear-gradient(
+            135deg,
+            #dfe8ff 0%,
+            #c7d6ff 100%
+          );
+          color: #2a48b8;
           font-weight: 800;
-          font-size: 12.5px;
+          font-size: 13px;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -454,157 +642,183 @@ const handleLogout = async () => {
         .user-name {
           font-size: 12.5px;
           font-weight: 700;
-          color: #16233d;
+          color: #182136;
           line-height: 1.25;
         }
 
         .user-role {
           font-size: 10.5px;
-          color: #8794ab;
+          color: #96a1b8;
         }
 
         .content {
-          padding: 22px 24px 36px;
+          padding: 28px 28px 44px;
+          max-width: 1180px;
+          width: 100%;
+          overflow-x: hidden;
         }
 
-        .page-title-row {
-          display: flex;
-          justify-content: space-between;
-          align-items: flex-start;
-          flex-wrap: wrap;
-          gap: 12px;
-          margin-bottom: 18px;
-        }
-
-        .page-title-row h1 {
-          margin: 0 0 3px;
-          font-size: 23px;
-          font-weight: 800;
-          color: #10295c;
-        }
-
-        .page-title-row p {
-          margin: 0;
-          font-size: 12.5px;
-          color: #8794ab;
-        }
-
-        .badges {
-          display: flex;
-          gap: 8px;
-        }
-
-        .badge {
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          background: #ffffff;
-          border: 1px solid #e6ebf3;
-          border-radius: 9px;
-          padding: 7px 12px;
-          font-size: 11.5px;
-          font-weight: 700;
-          color: #16233d;
+        .table-scroll {
+          overflow-x: auto;
         }
 
         .stat-grid {
           display: grid;
-          grid-template-columns: repeat(4, 1fr);
-          gap: 14px;
-          margin-bottom: 18px;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 16px;
+          margin-bottom: 22px;
         }
 
         .stat-card {
-          border-radius: 12px;
-          padding: 15px 17px;
+          position: relative;
+          overflow: hidden;
+          border-radius: 18px;
+          padding: 20px 22px;
           color: #ffffff;
+          isolation: isolate;
+        }
+
+        .stat-glow {
+          position: absolute;
+          top: -40px;
+          right: -30px;
+          width: 130px;
+          height: 130px;
+          border-radius: 50%;
+          background: rgba(255, 255, 255, 0.14);
+          z-index: -1;
         }
 
         .stat-card.blue {
-          background: #2f80ed;
+          background: linear-gradient(
+            135deg,
+            #5b8bf5 0%,
+            #3654d6 100%
+          );
+          box-shadow: 0 14px 28px rgba(54, 84, 214, 0.25);
         }
+
         .stat-card.orange {
-          background: #f5a742;
+          background: linear-gradient(
+            135deg,
+            #f8b85c 0%,
+            #f0902f 100%
+          );
+          box-shadow: 0 14px 28px rgba(240, 144, 47, 0.22);
         }
+
         .stat-card.green {
-          background: #27ae60;
-        }
-        .stat-card.red {
-          background: #eb5757;
+          background: linear-gradient(
+            135deg,
+            #3fcf7f 0%,
+            #1fa85c 100%
+          );
+          box-shadow: 0 14px 28px rgba(31, 168, 92, 0.22);
         }
 
         .stat-icon {
-          width: 30px;
-          height: 30px;
-          border-radius: 8px;
-          background: rgba(255, 255, 255, 0.22);
+          width: 34px;
+          height: 34px;
+          border-radius: 10px;
+          background: rgba(255, 255, 255, 0.24);
           display: flex;
           align-items: center;
           justify-content: center;
-          margin-bottom: 20px;
+          margin-bottom: 22px;
         }
 
         .stat-label {
-          font-size: 12px;
+          font-size: 12.5px;
           font-weight: 600;
           opacity: 0.92;
-          margin-bottom: 5px;
+          margin-bottom: 6px;
         }
 
         .stat-value {
-          font-size: 19px;
+          font-size: 21px;
           font-weight: 800;
-          margin-bottom: 3px;
+          margin-bottom: 4px;
+          letter-spacing: -0.3px;
         }
 
         .stat-sub {
-          font-size: 11px;
+          font-size: 11.5px;
           opacity: 0.85;
         }
 
-        .bottom-grid {
-          display: grid;
-          grid-template-columns: 1.7fr 1fr;
-          align-items: start;
-          gap: 14px;
-          background: linear-gradient(135deg, #eef4ff 0%, #f6f9ff 100%);
-          border-radius: 22px;
-          padding: 10px;
-          max-width: 1040px;
+        .stat-sub-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-top: 6px;
         }
 
-       .panel {
-  background: #ffffff;
-  border: 1px solid #eef1f8;
-  border-radius: 18px;
-  padding: 18px 20px 16px;
-  box-shadow: 0 10px 24px rgba(16, 41, 92, 0.06);
-  min-width: 0;
-}
+        .lihat-riwayat-btn {
+          display: flex;
+          align-items: center;
+          gap: 5px;
+          background: rgba(255, 255, 255, 0.22);
+          border: none;
+          border-radius: 999px;
+          padding: 6px 11px;
+          font-size: 10.5px;
+          font-weight: 700;
+          color: #ffffff;
+          cursor: pointer;
+          transition: background 0.15s ease;
+        }
 
-.table-panel {
-  padding: 14px 20px 20px;
-  box-sizing: border-box;
-}
+        .lihat-riwayat-btn:hover {
+          background: rgba(255, 255, 255, 0.34);
+        }
+
+        .panel {
+          background: #ffffff;
+          border: 1px solid #eef1f8;
+          border-radius: 20px;
+          padding: 20px 22px 18px;
+          box-shadow: 0 12px 28px rgba(16, 41, 92, 0.05);
+          min-width: 0;
+          margin-bottom: 16px;
+        }
+
+        .table-panel,
+        .riwayat-panel {
+          padding: 18px 22px 22px;
+          box-sizing: border-box;
+        }
+
         .panel-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: nowrap;
-  gap: 8px;
-  margin-bottom: 12px;
-}
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          flex-wrap: nowrap;
+          gap: 10px;
+          margin-bottom: 14px;
+        }
+
+        .panel-head .lihat-semua-link {
+          flex-shrink: 0;
+        }
 
         .panel-title {
           display: flex;
           align-items: center;
-          gap: 9px;
+          gap: 11px;
+          min-width: 0;
+        }
+
+        .panel h2,
+        .panel-sub {
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
         }
 
         .panel-icon {
-          width: 28px;
-          height: 28px;
-          border-radius: 8px;
+          width: 32px;
+          height: 32px;
+          border-radius: 10px;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -612,108 +826,46 @@ const handleLogout = async () => {
         }
 
         .panel-icon.blue-tint {
-          background: #e9f1ff;
+          background: #eef2ff;
         }
 
         .panel h2 {
           margin: 0;
-          font-size: 13.5px;
+          font-size: 14.5px;
           font-weight: 800;
-          color: #10295c;
+          color: #101a33;
         }
 
-        .dropdown-pill {
-          display: flex;
-          align-items: center;
-          gap: 5px;
-          background: #ffffff;
-          border: 1px solid #e6ebf3;
-          border-radius: 18px;
-          padding: 6px 11px;
+        .panel-sub {
+          margin: 1px 0 0;
           font-size: 11px;
-          font-weight: 700;
-          color: #37415a;
+          color: #96a1b8;
+        }
+
+        .lihat-semua-link {
+          background: none;
+          border: none;
           cursor: pointer;
-          white-space: nowrap;
-          flex-shrink: 0;
-        }
-
-        .chart {
-          display: flex;
-          gap: 8px;
-          height: 200px;
-          max-width: 480px;
-          margin: 0 auto;
-        }
-
-        .chart-axis {
-          display: flex;
-          flex-direction: column;
-          justify-content: space-between;
-          font-size: 10px;
-          color: #9aa7bd;
-          padding-bottom: 20px;
-          flex-shrink: 0;
-        }
-
-        .chart-bars {
-          flex: 1;
-          display: flex;
-          align-items: flex-end;
-          justify-content: space-between;
-          gap: 8px;
-          border-left: 1px solid #eef1f7;
-          border-bottom: 1px solid #eef1f7;
-          padding-left: 8px;
-        }
-
-        .bar-col {
-          flex: 0 1 44px;
-          max-width: 48px;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          height: 100%;
-        }
-
-        .bar-track {
-          flex: 1;
-          width: 100%;
-          display: flex;
-          align-items: flex-end;
-          justify-content: center;
-        }
-
-        .bar-fill {
-          position: relative;
-          width: 26px;
-          background: linear-gradient(180deg, #7cb2ff 0%, #2f80ed 55%, #1c67cf 100%);
-          border-radius: 7px 7px 0 0;
-          transition: height 0.3s ease;
-        }
-
-        .bar-value {
-          position: absolute;
-          top: -18px;
-          left: 50%;
-          transform: translateX(-50%);
-          font-size: 9.5px;
+          color: #4f6bed;
+          font-size: 12px;
           font-weight: 700;
-          color: #10295c;
-          white-space: nowrap;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          text-decoration: none;
+          padding: 6px 10px;
+          border-radius: 8px;
+          transition: background 0.15s ease;
         }
 
-        .bar-label {
-          margin-top: 8px;
-          font-size: 10px;
-          color: #8794ab;
-          font-weight: 600;
+        .lihat-semua-link:hover {
+          background: #eef2ff;
         }
 
         table {
           width: 100%;
           border-collapse: collapse;
-          font-size: 12px;
+          font-size: 12.5px;
         }
 
         thead th {
@@ -721,18 +873,25 @@ const handleLogout = async () => {
           font-size: 10.5px;
           color: #8b95ac;
           font-weight: 700;
-          padding: 7px 0 7px 12px;
-          background: #eef1fb;
+          text-transform: uppercase;
+          letter-spacing: 0.03em;
+          padding: 9px 0 9px 14px;
+          background: #f4f6fc;
         }
 
         thead th:first-child {
-          border-top-left-radius: 9px;
-          border-bottom-left-radius: 9px;
+          border-top-left-radius: 10px;
+          border-bottom-left-radius: 10px;
+        }
+
+        thead th:last-child {
+          border-top-right-radius: 10px;
+          border-bottom-right-radius: 10px;
         }
 
         thead th.chevron-col {
-          border-top-right-radius: 9px;
-          border-bottom-right-radius: 9px;
+          border-top-right-radius: 10px;
+          border-bottom-right-radius: 10px;
         }
 
         thead th.right,
@@ -747,37 +906,77 @@ const handleLogout = async () => {
         }
 
         tbody td {
-         padding: 3px 0 3px 12px;
+          padding: 12px 8px 12px 14px;
           border-bottom: 1px solid #f4f6fb;
-          color: #1d3f78;
+          color: #223561;
           font-weight: 700;
-          font-size: 12px;
+          font-size: 12.5px;
+        }
+
+        tbody tr:last-child td {
+          border-bottom: none;
+        }
+
+        tbody tr:hover td {
+          background: #fafbff;
         }
 
         tbody td:first-child {
+          padding-left: 14px;
+        }
+
+        .table-panel tbody td:first-child {
           padding-left: 0;
           text-align: center;
-          width: 34px;
+          width: 40px;
+        }
+
+        .trx-nomor-cell {
+          color: #101a33;
+        }
+
+        .terjual-pill {
+          display: inline-block;
+          background: #eef2ff;
+          color: #3654d6;
+          font-size: 11px;
+          font-weight: 700;
+          border-radius: 999px;
+          padding: 3px 11px;
+        }
+
+        .status-pill {
+          display: inline-block;
+          background: #e7f9ee;
+          color: #1fa85c;
+          font-size: 10.5px;
+          font-weight: 700;
+          border-radius: 999px;
+          padding: 4px 11px;
+        }
+
+        .kosong-text {
+          text-align: center;
+          padding: 26px 0 !important;
+          color: #96a1b8;
+          font-weight: 500 !important;
         }
 
         .no-badge {
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          width: 26px;
-          height: 26px;
+          width: 28px;
+          height: 28px;
           border-radius: 50%;
-          background: #e4ecfd;
-          color: #2f5fd0;
+          background: #eef2ff;
+          color: #3654d6;
           font-weight: 800;
           font-size: 11.5px;
         }
-          
+
         @media (max-width: 1100px) {
           .stat-grid {
-            grid-template-columns: repeat(2, 1fr);
-          }
-          .bottom-grid {
             grid-template-columns: 1fr;
           }
         }

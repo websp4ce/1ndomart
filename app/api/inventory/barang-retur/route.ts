@@ -1,9 +1,43 @@
 import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import type { RowDataPacket, ResultSetHeader } from 'mysql2';
+import type { PoolConnection } from 'mysql2/promise';
+
+const STATUS_VALID = ['Menunggu', 'Diproses', 'Selesai', 'Dibuang'];
+
+// Stok produk baru berubah kalau status = Selesai.
+//   ke_supplier    -> stok berkurang
+//   dari_pelanggan -> stok bertambah
+// Hasil: angka + = stok naik, angka - = stok turun, 0 = stok tidak berubah.
+function efekStok(jenis: string, status: string, qty: number) {
+  if (status !== 'Selesai') return 0;
+  return jenis === 'ke_supplier' ? -Number(qty) : Number(qty);
+}
+
+class StokError extends Error {}
+
+// Ubah stok produk di dalam transaksi. Balikin stok terbaru.
+async function ubahStok(conn: PoolConnection, barcode: string, selisih: number) {
+  const [rows] = await conn.query<RowDataPacket[]>(
+    'SELECT stok FROM products WHERE barcode = ? FOR UPDATE',
+    [barcode]
+  );
+  if (rows.length === 0) throw new StokError('Produk tidak ditemukan');
+
+  const stokSekarang = Number(rows[0].stok);
+  if (selisih === 0) return stokSekarang;
+
+  if (stokSekarang + selisih < 0) {
+    throw new StokError(
+      `Jumlah retur melebihi stok yang ada (stok saat ini ${stokSekarang} pcs)`
+    );
+  }
+
+  await conn.query('UPDATE products SET stok = stok + ? WHERE barcode = ?', [selisih, barcode]);
+  return stokSekarang + selisih;
+}
 
 // GET /api/inventory/barang-retur
-// Dipakai di halaman Barang Retur buat gantiin initialData dummy.
 export async function GET() {
   try {
     const [rows] = await pool.query<RowDataPacket[]>(
@@ -34,21 +68,15 @@ export async function GET() {
 }
 
 // POST /api/inventory/barang-retur
-// Dipakai di modal "Catat Retur Baru".
-// Body: { jenis: 'ke_supplier' | 'dari_pelanggan', supplier?, productBarcode, qty, alasan, status }
-//
-// LOGIKA STOK:
-// - jenis = 'ke_supplier'    -> stok BERKURANG (barang dikirim balik ke supplier)
-// - jenis = 'dari_pelanggan' -> stok NAMBAH   (barang balik dari pelanggan ke toko)
-//
-// Insert ke tabel barang_retur DAN update stok di products dilakukan
-// dalam satu transaksi, biar nggak ada kasus salah satunya gagal sendirian.
+// Body: { jenis, supplier?, productBarcode, qty, alasan, status }
+// Stok produk cuma berubah kalau status awalnya langsung "Selesai".
 export async function POST(request: Request) {
   const connection = await pool.getConnection();
 
   try {
     const body = await request.json();
-    const { jenis, supplier, productBarcode, qty, alasan, status } = body;
+    const { jenis, supplier, productBarcode, alasan, status } = body;
+    const qty = Number(body.qty);
 
     if (!jenis || !['ke_supplier', 'dari_pelanggan'].includes(jenis)) {
       return NextResponse.json(
@@ -64,50 +92,22 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!productBarcode || !qty || qty <= 0 || !alasan || !status) {
+    if (!productBarcode || !Number.isInteger(qty) || qty <= 0 || !alasan || !status) {
       return NextResponse.json(
         { message: 'Produk, jumlah, alasan, dan status wajib diisi dengan benar' },
         { status: 400 }
       );
     }
 
+    if (!STATUS_VALID.includes(status)) {
+      return NextResponse.json({ message: 'Status tidak valid' }, { status: 400 });
+    }
+
     await connection.beginTransaction();
 
-    // 1. Ambil stok produk saat ini (LOCK baris ini biar aman kalau ada request bareng)
-    const [produkRows] = await connection.query<RowDataPacket[]>(
-      'SELECT stok FROM products WHERE barcode = ? FOR UPDATE',
-      [productBarcode]
-    );
+    // cek stok / update stok (kalau status Selesai) dalam satu transaksi dengan insert
+    const stokBaru = await ubahStok(connection, productBarcode, efekStok(jenis, status, qty));
 
-    if (produkRows.length === 0) {
-      await connection.rollback();
-      return NextResponse.json({ message: 'Produk tidak ditemukan' }, { status: 404 });
-    }
-
-    const stokSekarang = produkRows[0].stok as number;
-
-    // 2. Hitung stok baru sesuai arah retur
-    let stokBaru: number;
-    if (jenis === 'ke_supplier') {
-      if (qty > stokSekarang) {
-        await connection.rollback();
-        return NextResponse.json(
-          { message: `Jumlah retur melebihi stok yang ada (stok saat ini ${stokSekarang} pcs)` },
-          { status: 400 }
-        );
-      }
-      stokBaru = stokSekarang - qty;
-    } else {
-      stokBaru = stokSekarang + qty;
-    }
-
-    // 3. Update stok produk
-    await connection.query<ResultSetHeader>(
-      'UPDATE products SET stok = ? WHERE barcode = ?',
-      [stokBaru, productBarcode]
-    );
-
-    // 4. Catat retur-nya
     const [insertResult] = await connection.query<ResultSetHeader>(
       `INSERT INTO barang_retur (jenis, supplier, product_barcode, qty, alasan, status)
        VALUES (?, ?, ?, ?, ?, ?)`,
@@ -125,6 +125,9 @@ export async function POST(request: Request) {
     );
   } catch (error) {
     await connection.rollback();
+    if (error instanceof StokError) {
+      return NextResponse.json({ message: error.message }, { status: 409 });
+    }
     console.error(error);
     return NextResponse.json(
       { message: 'Gagal mencatat retur barang' },

@@ -17,6 +17,52 @@ type StokRow = RowDataPacket & {
   stok: number;
 };
 
+// GET /api/transactions
+// GET /api/transactions?tanggal=2026-09-18  <-- default: hari ini
+// Dipakai tabel "Riwayat Transaksi Hari Ini" & panel "Riwayat Transaksi"
+// di Dashboard Kasir. Status diambil dari tabel payments (kolom status),
+// bukan hardcode, supaya kalau ada pembayaran yang gagal/pending itu ikut
+// kebaca juga (bukan selalu "Lunas").
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const tanggal = searchParams.get('tanggal');
+
+  try {
+    const [rows] = await pool.query<RowDataPacket[]>(
+      `SELECT
+         t.id,
+         t.tanggal,
+         t.grand_total,
+         COALESCE(SUM(ti.qty), 0) AS jumlah_item,
+         p.status AS status_pembayaran
+       FROM transactions t
+       LEFT JOIN transaction_items ti ON ti.transaction_id = t.id
+       LEFT JOIN payments p ON p.transaction_id = t.id
+       WHERE DATE(t.tanggal) = COALESCE(?, CURDATE())
+       GROUP BY t.id, t.tanggal, t.grand_total, p.status
+       ORDER BY t.tanggal DESC`,
+      [tanggal]
+    );
+
+    const hasil = rows.map((row) => ({
+      id: row.id,
+      nomor: `#TRX-${String(row.id).padStart(3, '0')}`,
+      waktu: row.tanggal,
+      jumlahItem: Number(row.jumlah_item),
+      total: Number(row.grand_total),
+      status: row.status_pembayaran ?? 'Belum Bayar',
+    }));
+
+    return NextResponse.json(hasil);
+  } catch (error) {
+    console.error(error);
+    return NextResponse.json(
+      { message: 'Gagal mengambil riwayat transaksi' },
+      { status: 500 }
+    );
+  }
+}
+
 // POST /api/transactions
 // Dipakai di halaman Pembayaran, dipanggil pas handleBayarTunai() /
 // handleKonfirmasiNonTunai() sukses.
