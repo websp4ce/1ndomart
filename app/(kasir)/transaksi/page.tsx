@@ -12,7 +12,6 @@ import {
   Plus,
   CreditCard,
   ShoppingCart,
-  Bell,
   ShieldCheck,
   Trash2,
   ChevronRight,
@@ -64,7 +63,6 @@ type Promo = {
 };
 
 const KERANJANG_KEY = 'keranjangAktif';
-const USER_KEY = 'indomart_user';
 const TRANSAKSI_KEY = 'transaksiAktif';
 
 const formatRupiah = (angka: number) =>
@@ -93,7 +91,6 @@ export default function TransaksiPenjualanPage() {
 
   const [query, setQuery] = useState('');
   const [kategoriAktif, setKategoriAktif] = useState('Semua');
-  const [namaUser, setNamaUser] = useState('Kasir');
 
   const [produkList, setProdukList] = useState<Produk[]>([]);
   const [kategoriList, setKategoriList] = useState<Kategori[]>([]);
@@ -116,17 +113,6 @@ export default function TransaksiPenjualanPage() {
 
   const kategoriRef = useRef<HTMLDivElement>(null);
   const memberPromoRef = useRef<HTMLDivElement>(null);
-
-  /* USER */
-  useEffect(() => {
-    try {
-      const data = JSON.parse(
-        localStorage.getItem(USER_KEY) || '{}'
-      );
-
-      if (data?.nama) setNamaUser(data.nama);
-    } catch {}
-  }, []);
 
   /* PRODUK + KATEGORI */
   useEffect(() => {
@@ -386,37 +372,6 @@ export default function TransaksiPenjualanPage() {
       <SidebarKasir />
 
       <div className="main">
-        <header className="topbar">
-          <div className="topbar-search">
-            <Search size={17} />
-            <input
-              placeholder="Cari produk, barcode, atau kategori..."
-            />
-          </div>
-
-          <div className="topbar-right">
-            <button className="icon-btn">
-              <Bell size={18} />
-              <span className="dot" />
-            </button>
-
-            <div className="user-block">
-              <div className="avatar">
-                {namaUser.charAt(0).toUpperCase()}
-              </div>
-
-              <div>
-                <div className="user-name">
-                  {namaUser}
-                </div>
-                <div className="user-role">
-                  Kasir
-                </div>
-              </div>
-            </div>
-          </div>
-        </header>
-
         <main className="content">
           <div className="panel-row">
 
@@ -449,7 +404,7 @@ export default function TransaksiPenjualanPage() {
                     src="/banner/promo-belanja3.png"
                     alt="Keranjang belanja"
                     fill
-                    sizes="120px"
+                    sizes="170px"
                   />
                 </div>
               </section>
@@ -1108,36 +1063,11 @@ export default function TransaksiPenjualanPage() {
           min-width: 0;
         }
 
-        .topbar {
-          margin: 18px 20px 0;
-          padding: 12px 18px;
-          background: white;
-          border-radius: 16px;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 20px;
-          box-shadow: 0 8px 20px rgba(16, 41, 92, 0.05);
-        }
-
-        .topbar-search {
-          max-width: 480px;
-          width: 100%;
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          background: #f4f7fc;
-          padding: 10px 15px;
-          border-radius: 11px;
-        }
-
-        .topbar-search svg,
         .search-box svg {
           color: #8794ab;
           flex-shrink: 0;
         }
 
-        .topbar-search input,
         .search-box input {
           width: 100%;
           border: 0;
@@ -1146,62 +1076,8 @@ export default function TransaksiPenjualanPage() {
           font-size: 12px;
         }
 
-        .topbar-right {
-          display: flex;
-          align-items: center;
-          gap: 16px;
-        }
-
-        .icon-btn {
-          position: relative;
-          border: 0;
-          background: transparent;
-          cursor: pointer;
-          color: #4b5875;
-        }
-
-        .dot {
-          position: absolute;
-          right: -2px;
-          top: -2px;
-          width: 8px;
-          height: 8px;
-          background: #e2231a;
-          border: 2px solid white;
-          border-radius: 50%;
-        }
-
-        .user-block {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-
-        .avatar {
-          width: 34px;
-          height: 34px;
-          border-radius: 50%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          background: #dfeaff;
-          color: #1646a0;
-          font-size: 13px;
-          font-weight: 800;
-        }
-
-        .user-name {
-          font-size: 12px;
-          font-weight: 700;
-        }
-
-        .user-role {
-          font-size: 10px;
-          color: #8794ab;
-        }
-
         .content {
-          padding: 18px 20px 30px;
+          padding: 20px 20px 30px;
         }
 
         .panel-row {
@@ -1218,12 +1094,14 @@ export default function TransaksiPenjualanPage() {
           min-width: 0;
         }
 
+        /* BANNER */
+
         .promo-banner {
-          min-height: 80px;
+          min-height: 150px;
           position: relative;
           overflow: hidden;
-          border-radius: 16px;
-          padding: 14px 20px;
+          border-radius: 20px;
+          padding: 24px 28px;
           background: linear-gradient(
             120deg,
             #0b3d91,
@@ -1233,44 +1111,54 @@ export default function TransaksiPenjualanPage() {
           display: flex;
           align-items: center;
           justify-content: space-between;
+          gap: 16px;
         }
 
         .promo-text {
           z-index: 1;
+          max-width: 460px;
         }
 
         .promo-text span {
+          display: block;
           color: #ffd166;
-          font-size: 10px;
+          font-size: 12px;
           font-weight: 800;
         }
 
         .promo-text h1 {
-          margin: 5px 0;
-          font-size: 17px;
+          margin: 8px 0 8px;
+          font-size: 22px;
+          font-weight: 800;
           line-height: 1.3;
+          letter-spacing: 0.2px;
         }
 
         .promo-text p {
           margin: 0;
-          font-size: 10.5px;
-          color: #dbe9fd;
+          font-size: 12.5px;
+          line-height: 1.5;
+          color: #e4eefc;
         }
 
         .promo-badge {
           position: absolute;
-          top: 10px;
-          right: 16px;
-          padding: 3px 9px;
-          border: 1px solid rgba(255,255,255,.3);
+          top: 16px;
+          right: 22px;
+          padding: 6px 14px;
+          background: rgba(255, 255, 255, 0.16);
+          border: 1px solid rgba(255, 255, 255, 0.35);
           border-radius: 20px;
-          font-size: 9px;
+          font-size: 11px;
+          font-weight: 700;
         }
 
         .promo-image {
           position: relative;
-          width: 100px;
-          height: 65px;
+          flex-shrink: 0;
+          width: 170px;
+          height: 115px;
+          margin-top: 22px;
         }
 
         .promo-image img {
@@ -2029,20 +1917,21 @@ export default function TransaksiPenjualanPage() {
             grid-template-columns: repeat(2, 1fr);
           }
 
-          .topbar {
-            margin: 10px;
-          }
-
           .content {
             padding: 10px;
           }
 
-          .topbar-search {
-            max-width: none;
+          .promo-banner {
+            padding: 18px 16px;
           }
 
-          .user-block {
-            display: none;
+          .promo-text h1 {
+            font-size: 17px;
+          }
+
+          .promo-image {
+            width: 100px;
+            height: 70px;
           }
 
           .dropdown {

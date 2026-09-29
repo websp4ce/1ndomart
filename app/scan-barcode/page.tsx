@@ -46,9 +46,6 @@ type Kategori = {
   nama: string;
 };
 
-// Item di keranjang. Dibuat generik (id/nama/harga/gambar/qty) supaya
-// bentuknya SAMA dengan yang dipakai di halaman transaksi — jadi walau
-// disimpan/dibaca dari dua file berbeda, datanya tetap nyambung.
 type ItemKeranjang = {
   id: string;
   nama: string;
@@ -57,8 +54,6 @@ type ItemKeranjang = {
   qty: number;
 };
 
-// Kunci localStorage ini HARUS SAMA PERSIS dengan yang dipakai di
-// halaman transaksi, supaya keranjangnya jadi satu keranjang yang sama.
 const KERANJANG_KEY = 'keranjangAktif';
 
 function bacaKeranjang(): ItemKeranjang[] {
@@ -75,7 +70,7 @@ function simpanKeranjang(items: ItemKeranjang[]) {
   try {
     localStorage.setItem(KERANJANG_KEY, JSON.stringify(items));
   } catch {
-    // kalau localStorage gagal (mis. mode privat browser), biarkan saja
+    // biarkan saja
   }
 }
 
@@ -83,9 +78,6 @@ function formatRupiah(angka: number) {
   return `Rp ${angka.toLocaleString('id-ID')}`;
 }
 
-// Jaga-jaga kalau data gambar dari database formatnya salah
-// (misal cuma "kingkong.png" tanpa "/" di depan, atau kosong/null).
-// HARUS SAMA dengan yang dipakai di halaman transaksi.
 function normalisasiGambar(src: string | null | undefined): string {
   if (!src) return '/placeholder.png';
   if (src.startsWith('/') || src.startsWith('http://') || src.startsWith('https://')) {
@@ -94,17 +86,15 @@ function normalisasiGambar(src: string | null | undefined): string {
   return `/${src}`;
 }
 
-// Form kosong buat modal Add Product
+// Form kosong buat modal Add Product (gambar sekarang berupa File, dipisah)
 const formKosong = {
   barcode: '',
   nama: '',
   harga: '',
   stok: '',
   kategori: '',
-  gambar: '',
 };
 
-// Class input yang dipakai berulang di modal Tambah Produk
 const inputClass =
   'w-full rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-100';
 const labelClass =
@@ -126,15 +116,15 @@ export default function ScanBarcodePage() {
   const kodeTerakhirRef = useRef<{ kode: string; waktu: number } | null>(null);
   const COOLDOWN_MS = 2000;
 
-  // Daftar produk (buat saran/typeahead pas ngetik manual) & kategori
-  // (buat datalist di form Add Product). Diambil dari API, bukan array
-  // dummy lagi.
   const [daftarProduk, setDaftarProduk] = useState<Produk[]>([]);
   const [daftarKategori, setDaftarKategori] = useState<Kategori[]>([]);
 
   // Modal "Add Product"
   const [showAddProduct, setShowAddProduct] = useState(false);
   const [formProduk, setFormProduk] = useState(formKosong);
+  const [fileGambar, setFileGambar] = useState<File | null>(null);
+  const [previewGambar, setPreviewGambar] = useState<string | null>(null);
+  const [inputFileKey, setInputFileKey] = useState(0);
   const [simpanLoading, setSimpanLoading] = useState(false);
   const [simpanError, setSimpanError] = useState('');
   const [simpanSukses, setSimpanSukses] = useState('');
@@ -146,8 +136,6 @@ export default function ScanBarcodePage() {
   const tampilkanSaran =
     saranProduk.length > 0 && !(hasil && hasil.kode === kodeDicari);
 
-  // Ambil daftar produk (buat saran) & kategori (buat form Add Product)
-  // begitu halaman dibuka.
   async function muatDaftarProduk() {
     try {
       const res = await fetch('/api/products');
@@ -185,9 +173,6 @@ export default function ScanBarcodePage() {
     muatDaftarKategori();
   }, []);
 
-  // Tambah produk ke keranjang bersama (yang dipakai juga oleh halaman
-  // transaksi) langsung lewat localStorage — kalau kode produknya sudah
-  // ada, qty-nya yang nambah, bukan bikin baris baru.
   function tambahKeKeranjang(produk: Produk) {
     const prev = bacaKeranjang();
     const sudahAda = prev.find((item) => item.id === produk.kode);
@@ -213,8 +198,6 @@ export default function ScanBarcodePage() {
     cariProduk(produk.kode);
   }
 
-  // Dulu ini cuma cari di array lokal (sinkron). Sekarang manggil
-  // GET /api/products/:barcode ke database (async).
   async function cariProduk(kode: string) {
     const kodeBersih = kode.trim();
     if (!kodeBersih) return;
@@ -254,22 +237,52 @@ export default function ScanBarcodePage() {
 
   // ==================== Add Product ====================
 
+  function resetGambar() {
+    if (previewGambar) URL.revokeObjectURL(previewGambar);
+    setFileGambar(null);
+    setPreviewGambar(null);
+    setInputFileKey((k) => k + 1); // kosongkan <input type="file">
+  }
+
   function bukaFormAddProduct(prefillBarcode?: string) {
     setFormProduk({ ...formKosong, barcode: prefillBarcode ?? kodeManual });
+    resetGambar();
     setSimpanError('');
     setSimpanSukses('');
     setShowAddProduct(true);
   }
 
   function tutupFormAddProduct() {
+    resetGambar();
     setShowAddProduct(false);
+  }
+
+  function handlePilihGambar(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+      setSimpanError('Format gambar harus PNG, JPG, atau WEBP.');
+      resetGambar();
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setSimpanError('Ukuran gambar maksimal 2 MB.');
+      resetGambar();
+      return;
+    }
+
+    setSimpanError('');
+    if (previewGambar) URL.revokeObjectURL(previewGambar);
+    setFileGambar(file);
+    setPreviewGambar(URL.createObjectURL(file));
   }
 
   async function handleSimpanProduk() {
     setSimpanError('');
     setSimpanSukses('');
 
-    const { barcode, nama, harga, stok, kategori, gambar } = formProduk;
+    const { barcode, nama, harga, stok, kategori } = formProduk;
 
     if (!barcode.trim() || !nama.trim() || !harga.trim() || !kategori.trim()) {
       setSimpanError('Barcode, nama, harga, dan kategori wajib diisi.');
@@ -278,17 +291,19 @@ export default function ScanBarcodePage() {
 
     setSimpanLoading(true);
     try {
+      // Pakai FormData (bukan JSON) karena ada file gambar.
+      // JANGAN set header Content-Type manual, biar browser yang isi boundary-nya.
+      const body = new FormData();
+      body.append('barcode', barcode.trim());
+      body.append('nama', nama.trim());
+      body.append('harga', harga.trim());
+      body.append('stok', stok.trim() || '0');
+      body.append('kategori', kategori.trim());
+      if (fileGambar) body.append('gambar', fileGambar);
+
       const res = await fetch('/api/products', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          barcode: barcode.trim(),
-          nama: nama.trim(),
-          harga: Number(harga),
-          stok: stok.trim() ? Number(stok) : 0,
-          kategori: kategori.trim(),
-          gambar: gambar.trim() || null,
-        }),
+        body,
       });
 
       const data = await res.json();
@@ -299,12 +314,10 @@ export default function ScanBarcodePage() {
       }
 
       setSimpanSukses('Produk berhasil ditambahkan!');
-      // Refresh daftar produk & kategori supaya kategori baru (mis. "Obat")
-      // langsung ikut muncul, termasuk nanti di pill halaman Transaksi.
       await Promise.all([muatDaftarProduk(), muatDaftarKategori()]);
 
       setTimeout(() => {
-        setShowAddProduct(false);
+        tutupFormAddProduct();
       }, 900);
     } catch (err) {
       console.error(err);
@@ -314,20 +327,11 @@ export default function ScanBarcodePage() {
     }
   }
 
-  // Beberapa "varian" pemrosesan gambar yang dicoba bergantian tiap frame.
-  // Tujuannya: walau kondisi cahaya di lapangan jelek (terlalu gelap,
-  // terlalu silau/overexposed, kontras rendah), salah satu varian ini
-  // biasanya tetap cukup jelas untuk dibaca oleh detector/zxing.
   const variasiFilter = [
     'none',
-    'contrast(200%) brightness(140%)', // untuk kondisi gelap/kontras rendah
+    'contrast(200%) brightness(140%)',
   ];
 
-  // Barcode yang dipegang tangan jarang lurus sempurna. Kebanyakan barcode
-  // reader (zxing maupun BarcodeDetector) mulai gagal baca kalau
-  // kemiringannya lumayan (>15 derajat-an). Jadi tiap frame juga dicoba
-  // diputar ke beberapa sudut ini dulu sebelum di-decode, supaya barcode
-  // yang miring tetap "diluruskan" ke salah satu percobaan.
   const sudutRotasi = [0, 10, -10, 20, -20, 30, -30];
 
   async function nyalakanKamera() {
@@ -349,10 +353,6 @@ export default function ScanBarcodePage() {
       await videoRef.current.play();
       setKameraAktif(true);
 
-      // Siapkan BarcodeDetector native kalau browser mendukung (lebih cepat
-      // & lebih akurat dari zxing untuk kondisi normal). Kalau tidak ada
-      // atau errornya bukan sekadar "belum ketemu", tetap lanjut — zxing
-      // dipakai berbarengan sebagai pelengkap/fallback, bukan pengganti.
       const BarcodeDetectorApi = (window as any).BarcodeDetector;
       let detector: any = null;
       if (BarcodeDetectorApi) {
@@ -386,17 +386,10 @@ export default function ScanBarcodePage() {
         const video = videoRef.current;
         if (!video || !video.videoWidth || !ctx) return;
 
-        // Kalau proses frame sebelumnya masih jalan (mis. lagi nyoba semua
-        // varian filter), skip tick ini biar tidak numpuk/lag.
         if (sedangMemprosesRef.current) return;
         sedangMemprosesRef.current = true;
 
         try {
-          // Crop ke area sekitar kotak target di tengah (dilebihkan cukup
-          // banyak dari bingkai biru di UI) supaya kamera "zoom" secara
-          // digital ke barcode-nya, sekaligus tetap menyisakan cukup ruang
-          // kosong di pinggir untuk quiet zone barcode dan untuk menampung
-          // barcode yang miring setelah diputar.
           const ukuranCrop = 0.8;
           const sw = video.videoWidth * ukuranCrop;
           const sh = video.videoHeight * ukuranCrop;
@@ -416,7 +409,6 @@ export default function ScanBarcodePage() {
               ctx.drawImage(video, sx, sy, sw, sh, -sw / 2, -sh / 2, sw, sh);
               ctx.restore();
 
-              // 1) Coba BarcodeDetector native dulu kalau ada
               if (detector) {
                 try {
                   const hasilDeteksi = await detector.detect(canvas);
@@ -425,12 +417,10 @@ export default function ScanBarcodePage() {
                     return;
                   }
                 } catch {
-                  // varian ini gagal, lanjut coba zxing / varian berikutnya
+                  // lanjut
                 }
               }
 
-              // 2) Fallback/pelengkap: zxing baca dari canvas yang sudah
-              // di-crop, diputar, & di-filter (bukan dari video mentah lagi)
               try {
                 const luminanceSource = new HTMLCanvasElementLuminanceSource(canvas);
                 const binaryBitmap = new BinaryBitmap(new HybridBinarizer(luminanceSource));
@@ -440,10 +430,6 @@ export default function ScanBarcodePage() {
                   return;
                 }
               } catch (err) {
-                // NotFoundException normal kalau belum ketemu di kombinasi
-                // sudut+filter ini, lanjut coba kombinasi selanjutnya.
-                // Selain itu, log biar ketahuan kalau ada error lain yang
-                // bukan sekadar "belum ketemu".
                 if (!(err instanceof NotFoundException)) {
                   console.warn('zxing decode error (bukan NotFoundException):', err);
                 }
@@ -477,9 +463,6 @@ export default function ScanBarcodePage() {
     setKameraAktif(false);
   }
 
-  // Kalau yang diketik sudah persis cocok satu kode produk secara penuh
-  // (dari daftar produk yang sudah dimuat), langsung tampilkan hasilnya
-  // otomatis tanpa perlu klik "Cari".
   useEffect(() => {
     const kodeBersih = kodeManual.trim();
     if (!kodeBersih) return;
@@ -490,7 +473,6 @@ export default function ScanBarcodePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kodeManual, daftarProduk]);
 
-  // Pastikan kamera & interval scan dimatikan saat pindah halaman
   useEffect(() => {
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
@@ -549,7 +531,6 @@ export default function ScanBarcodePage() {
                   </div>
                 )}
 
-                {/* Badge status kamera */}
                 <div className="absolute right-4 top-4 flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-[11px] font-semibold text-white backdrop-blur-sm">
                   {kameraAktif ? (
                     <>
@@ -564,7 +545,6 @@ export default function ScanBarcodePage() {
                   )}
                 </div>
 
-                {/* Bingkai target scan */}
                 <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
                   <div className="relative h-[46%] w-[46%]">
                     <span className="absolute left-0 top-0 h-8 w-8 rounded-tl-lg border-l-4 border-t-4 border-blue-400" />
@@ -581,7 +561,6 @@ export default function ScanBarcodePage() {
                 </div>
               )}
 
-              {/* Tombol kontrol kamera */}
               <div className="mt-4 flex flex-col items-center gap-2">
                 <div className="flex items-center gap-3">
                   {kameraAktif ? (
@@ -610,7 +589,7 @@ export default function ScanBarcodePage() {
               </div>
             </div>
 
-            {/* Panel kanan: input manual + hasil + keranjang */}
+            {/* Panel kanan */}
             <div className="flex flex-col gap-5">
               <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
                 <div className="flex items-center gap-2.5">
@@ -881,9 +860,6 @@ export default function ScanBarcodePage() {
                     style={{ color: '#334155' }}
                     className={inputClass}
                   />
-                  {/* Kategori yang sudah ada muncul sebagai saran, tapi bisa
-                      diketik bebas — kalau kategorinya baru, backend yang
-                      otomatis nambahin ke tabel categories. */}
                   <datalist id="daftar-kategori">
                     {daftarKategori.map((k) => (
                       <option key={k.id} value={k.nama} />
@@ -891,22 +867,59 @@ export default function ScanBarcodePage() {
                   </datalist>
                 </div>
 
+                {/* GAMBAR: upload file */}
                 <div>
                   <label className={labelClass}>
                     <ImageIcon size={13} className="text-blue-500" />
-                    Path Gambar
+                    Gambar Produk
                     <span className="font-medium normal-case tracking-normal text-slate-400">
                       (opsional)
                     </span>
                   </label>
-                  <input
-                    type="text"
-                    value={formProduk.gambar}
-                    onChange={(e) => setFormProduk({ ...formProduk, gambar: e.target.value })}
-                    placeholder="/produk/nama-file.png"
-                    style={{ color: '#334155' }}
-                    className={inputClass}
-                  />
+
+                  {previewGambar ? (
+                    <div className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-slate-50/60 p-3">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={previewGambar}
+                        alt="Preview gambar produk"
+                        className="h-20 w-20 rounded-xl bg-white object-contain"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-slate-700">
+                          {fileGambar?.name}
+                        </p>
+                        <p className="text-xs text-slate-400">
+                          {fileGambar ? (fileGambar.size / 1024).toFixed(0) : 0} KB
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={resetGambar}
+                        className="rounded-lg p-2 text-slate-400 transition hover:bg-rose-50 hover:text-rose-500"
+                        aria-label="Hapus gambar"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+                  ) : (
+                    <label className="flex cursor-pointer flex-col items-center gap-1.5 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/60 px-4 py-6 text-center transition hover:border-blue-400 hover:bg-blue-50/40">
+                      <ImageIcon size={24} className="text-slate-400" />
+                      <span className="text-sm font-semibold text-slate-600">
+                        Klik untuk pilih gambar
+                      </span>
+                      <span className="text-xs text-slate-400">
+                        PNG, JPG, atau WEBP — maks 2 MB
+                      </span>
+                      <input
+                        key={inputFileKey}
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        onChange={handlePilihGambar}
+                        className="hidden"
+                      />
+                    </label>
+                  )}
                 </div>
 
                 {simpanError && (
