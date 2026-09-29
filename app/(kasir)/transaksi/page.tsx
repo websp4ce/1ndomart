@@ -15,10 +15,16 @@ import {
   ShieldCheck,
   Trash2,
   ChevronRight,
+  Users,
+  Tag,
+  ChevronDown,
+  UserRound,
+  Check,
+  Percent,
 } from 'lucide-react';
 
 type Produk = {
-  id: string; // barcode
+  id: string;
   nama: string;
   harga: number;
   kategori: string;
@@ -30,9 +36,6 @@ type Kategori = {
   nama: string;
 };
 
-// Item di keranjang. Dibuat generik (id/nama/harga/gambar/qty) supaya
-// bentuknya SAMA dengan yang dipakai di halaman scan barcode — jadi
-// walau disimpan/dibaca dari dua file berbeda, datanya tetap nyambung.
 type ItemKeranjang = {
   id: string;
   nama: string;
@@ -41,172 +44,327 @@ type ItemKeranjang = {
   qty: number;
 };
 
-// Kunci localStorage ini HARUS SAMA PERSIS dengan yang dipakai di
-// halaman scan barcode, supaya keranjangnya jadi satu keranjang yang sama.
+type Member = {
+  id: string;
+  nama: string;
+  telepon: string;
+  poin: number;
+  status?: string;
+};
+
+type Promo = {
+  id: string;
+  nama: string;
+  tipe?: string;
+  persen: number;
+  mulai?: string;
+  selesai?: string;
+  status?: string;
+};
+
 const KERANJANG_KEY = 'keranjangAktif';
+const TRANSAKSI_KEY = 'transaksiAktif';
 
-function bacaKeranjang(): ItemKeranjang[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = localStorage.getItem(KERANJANG_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
+const formatRupiah = (angka: number) =>
+  'Rp ' + Number(angka || 0).toLocaleString('id-ID');
 
-function simpanKeranjang(items: ItemKeranjang[]) {
-  try {
-    localStorage.setItem(KERANJANG_KEY, JSON.stringify(items));
-  } catch {
-    // kalau localStorage gagal (mis. mode privat browser), biarkan saja
-  }
-}
+const gambar = (src: string) =>
+  !src
+    ? '/placeholder.png'
+    : src.startsWith('/') ||
+        src.startsWith('http://') ||
+        src.startsWith('https://')
+      ? src
+      : `/${src}`;
 
-function formatRupiah(angka: number): string {
-  return 'Rp ' + angka.toLocaleString('id-ID');
-}
-
-// Jaga-jaga kalau data gambar dari database formatnya salah
-// (misal cuma "kingkong.png" tanpa "/" di depan, atau kosong).
-function normalisasiGambar(src: string): string {
-  if (!src) return '/placeholder.png';
-  if (src.startsWith('/') || src.startsWith('http://') || src.startsWith('https://')) {
-    return src;
-  }
-  return `/${src}`;
-}
+const inisial = (nama: string) =>
+  nama
+    .split(' ')
+    .map((x) => x[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join('')
+    .toUpperCase();
 
 export default function TransaksiPenjualanPage() {
   const router = useRouter();
-  const [query, setQuery] = useState('');
-  const [kategoriAktif, setKategoriAktif] = useState<string>('Semua');
-  const [keranjang, setKeranjang] = useState<ItemKeranjang[]>([]);
 
-  // Data dari API (dulu array dummy: produkDummy & kategoriList)
+  const [query, setQuery] = useState('');
+  const [kategoriAktif, setKategoriAktif] = useState('Semua');
+
   const [produkList, setProdukList] = useState<Produk[]>([]);
   const [kategoriList, setKategoriList] = useState<Kategori[]>([]);
-  const [loadingProduk, setLoadingProduk] = useState(true);
-  const [errorMuat, setErrorMuat] = useState('');
+  const [keranjang, setKeranjang] = useState<ItemKeranjang[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  const kategoriScrollRef = useRef<HTMLDivElement>(null);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [promos, setPromos] = useState<Promo[]>([]);
 
-  // Ambil produk & kategori dari API begitu halaman dibuka.
+  const [memberTerpilih, setMemberTerpilih] =
+    useState<Member | null>(null);
+  const [promoTerpilih, setPromoTerpilih] =
+    useState<Promo | null>(null);
+
+  const [showMember, setShowMember] = useState(false);
+  const [showPromo, setShowPromo] = useState(false);
+  const [memberSearch, setMemberSearch] = useState('');
+  const [promoSearch, setPromoSearch] = useState('');
+
+  const kategoriRef = useRef<HTMLDivElement>(null);
+  const memberPromoRef = useRef<HTMLDivElement>(null);
+
+  /* PRODUK + KATEGORI */
   useEffect(() => {
-    async function muatData() {
-      setLoadingProduk(true);
-      setErrorMuat('');
+    async function load() {
       try {
-        const [resProduk, resKategori] = await Promise.all([
+        setLoading(true);
+
+        const [produkRes, kategoriRes] = await Promise.all([
           fetch('/api/products'),
           fetch('/api/categories'),
         ]);
 
-        if (!resProduk.ok || !resKategori.ok) {
-          throw new Error('Gagal memuat data dari server');
+        if (!produkRes.ok || !kategoriRes.ok) {
+          throw new Error('Gagal mengambil produk');
         }
 
-        const dataProduk: Produk[] = await resProduk.json();
-        const dataKategori: Kategori[] = await resKategori.json();
-
-        setProdukList(dataProduk);
-        setKategoriList(dataKategori);
+        setProdukList(await produkRes.json());
+        setKategoriList(await kategoriRes.json());
       } catch (err) {
         console.error(err);
-        setErrorMuat('Gagal memuat produk/kategori. Pastikan server & database aktif.');
+        setError(
+          'Gagal memuat produk. Pastikan server dan database aktif.'
+        );
       } finally {
-        setLoadingProduk(false);
+        setLoading(false);
       }
     }
 
-    muatData();
+    load();
   }, []);
 
-  // Muat keranjang yang sudah tersimpan (misal dari hasil scan barcode)
-  // begitu halaman transaksi dibuka.
+  /* MEMBER + PROMO DARI API */
   useEffect(() => {
-    setKeranjang(bacaKeranjang());
-  }, []);
+    async function loadManajemen() {
+      try {
+        const [memberRes, promoRes] = await Promise.all([
+          fetch('/api/manajemen?menu=member'),
+          fetch('/api/manajemen?menu=promo'),
+        ]);
 
-  // Kalau keranjang diubah dari tab/halaman lain, ikut ter-update di sini.
-  useEffect(() => {
-    function handleStorage(e: StorageEvent) {
-      if (e.key === KERANJANG_KEY) {
-        setKeranjang(bacaKeranjang());
+        if (memberRes.ok) {
+          const data = await memberRes.json();
+          setMembers(Array.isArray(data) ? data : []);
+        }
+
+        if (promoRes.ok) {
+          const data = await promoRes.json();
+          setPromos(Array.isArray(data) ? data : []);
+        }
+      } catch (err) {
+        console.error('Gagal mengambil member/promo:', err);
+        setMembers([]);
+        setPromos([]);
       }
     }
-    window.addEventListener('storage', handleStorage);
-    return () => window.removeEventListener('storage', handleStorage);
+
+    loadManajemen();
   }, []);
 
+  /* KERANJANG */
+  useEffect(() => {
+    try {
+      setKeranjang(
+        JSON.parse(
+          localStorage.getItem(KERANJANG_KEY) || '[]'
+        )
+      );
+    } catch {
+      setKeranjang([]);
+    }
+  }, []);
+
+  /* CLOSE DROPDOWN */
+  useEffect(() => {
+    const close = (e: MouseEvent) => {
+      if (
+        memberPromoRef.current &&
+        !memberPromoRef.current.contains(e.target as Node)
+      ) {
+        setShowMember(false);
+        setShowPromo(false);
+      }
+    };
+
+    document.addEventListener('mousedown', close);
+
+    return () =>
+      document.removeEventListener('mousedown', close);
+  }, []);
+
+  /* FILTER */
   const produkTersaring = useMemo(() => {
-    return produkList.filter((p) => {
-      const cocokKategori = kategoriAktif === 'Semua' || p.kategori === kategoriAktif;
-      const cocokQuery = p.nama.toLowerCase().includes(query.toLowerCase());
-      return cocokKategori && cocokQuery;
-    });
+    const q = query.toLowerCase();
+
+    return produkList.filter(
+      (p) =>
+        (kategoriAktif === 'Semua' ||
+          p.kategori === kategoriAktif) &&
+        p.nama.toLowerCase().includes(q)
+    );
   }, [produkList, query, kategoriAktif]);
 
-  const total = useMemo(
-    () => keranjang.reduce((sum, item) => sum + item.harga * item.qty, 0),
+  const memberTersaring = useMemo(() => {
+    const q = memberSearch.toLowerCase();
+
+    return members.filter((m) => {
+      if (
+        m.status &&
+        m.status.toLowerCase() !== 'aktif'
+      ) {
+        return false;
+      }
+
+      return `${m.nama} ${m.telepon}`
+        .toLowerCase()
+        .includes(q);
+    });
+  }, [members, memberSearch]);
+
+  const promoTersaring = useMemo(() => {
+    const q = promoSearch.toLowerCase();
+
+    return promos.filter((p) => {
+      if (
+        p.status &&
+        p.status.toLowerCase() !== 'aktif'
+      ) {
+        return false;
+      }
+
+      return `${p.nama} ${p.tipe} ${p.persen}`
+        .toLowerCase()
+        .includes(q);
+    });
+  }, [promos, promoSearch]);
+
+  /* TOTAL */
+  const subtotal = useMemo(
+    () =>
+      keranjang.reduce(
+        (total, item) =>
+          total + item.harga * item.qty,
+        0
+      ),
     [keranjang]
   );
 
-  // Bungkus setKeranjang supaya setiap kali keranjang berubah, otomatis
-  // ikut disimpan ke localStorage juga.
-  function ubahKeranjang(fn: (prev: ItemKeranjang[]) => ItemKeranjang[]) {
-    setKeranjang((prev) => {
-      const next = fn(prev);
-      simpanKeranjang(next);
-      return next;
-    });
-  }
+  const diskon = useMemo(() => {
+    if (!promoTerpilih) return 0;
 
-  const tambahKeKeranjang = (produk: Produk) => {
-    ubahKeranjang((prev) => {
-      const sudahAda = prev.find((item) => item.id === produk.id);
-      if (sudahAda) {
-        return prev.map((item) =>
-          item.id === produk.id ? { ...item, qty: item.qty + 1 } : item
-        );
-      }
-      return [
-        ...prev,
-        {
-          id: produk.id,
-          nama: produk.nama,
-          harga: produk.harga,
-          gambar: produk.gambar,
-          qty: 1,
-        },
-      ];
-    });
+    if (
+      promoTerpilih.tipe?.toLowerCase() ===
+      'cashback'
+    ) {
+      return 0;
+    }
+
+    return Math.round(
+      (subtotal *
+        Number(promoTerpilih.persen || 0)) /
+        100
+    );
+  }, [subtotal, promoTerpilih]);
+
+  const total = Math.max(0, subtotal - diskon);
+
+  /* CART */
+  const simpanCart = (items: ItemKeranjang[]) => {
+    setKeranjang(items);
+    localStorage.setItem(
+      KERANJANG_KEY,
+      JSON.stringify(items)
+    );
   };
 
-  const ubahQty = (id: string, delta: number) => {
-    ubahKeranjang((prev) =>
-      prev
+  const tambahProduk = (produk: Produk) => {
+    const ada = keranjang.find(
+      (x) => x.id === produk.id
+    );
+
+    if (ada) {
+      simpanCart(
+        keranjang.map((x) =>
+          x.id === produk.id
+            ? { ...x, qty: x.qty + 1 }
+            : x
+        )
+      );
+      return;
+    }
+
+    simpanCart([
+      ...keranjang,
+      {
+        id: produk.id,
+        nama: produk.nama,
+        harga: produk.harga,
+        gambar: produk.gambar,
+        qty: 1,
+      },
+    ]);
+  };
+
+  const ubahQty = (id: string, jumlah: number) => {
+    simpanCart(
+      keranjang
         .map((item) =>
-          item.id === id ? { ...item, qty: Math.max(1, item.qty + delta) } : item
+          item.id === id
+            ? {
+                ...item,
+                qty: Math.max(
+                  1,
+                  item.qty + jumlah
+                ),
+              }
+            : item
         )
         .filter((item) => item.qty > 0)
     );
   };
 
   const hapusItem = (id: string) => {
-    ubahKeranjang((prev) => prev.filter((item) => item.id !== id));
+    simpanCart(
+      keranjang.filter((item) => item.id !== id)
+    );
   };
 
-  const hapusSemua = () => ubahKeranjang(() => []);
+  const hapusSemua = () => {
+    simpanCart([]);
+  };
+
+  const bayar = () => {
+    localStorage.setItem(
+      TRANSAKSI_KEY,
+      JSON.stringify({
+        keranjang,
+        member: memberTerpilih,
+        promo: promoTerpilih,
+        subtotal,
+        diskon,
+        total,
+      })
+    );
+
+    router.push('/pembayaran');
+  };
 
   const geserKategori = () => {
-    kategoriScrollRef.current?.scrollBy({ left: 180, behavior: 'smooth' });
-  };
-
-  const handleBayarSekarang = () => {
-    // Keranjang sudah otomatis tersimpan tiap kali berubah, jadi di sini
-    // tinggal lanjut navigasi ke halaman pembayaran.
-    router.push('/pembayaran');
+    kategoriRef.current?.scrollBy({
+      left: 180,
+      behavior: 'smooth',
+    });
   };
 
   return (
@@ -216,54 +374,70 @@ export default function TransaksiPenjualanPage() {
       <div className="main">
         <main className="content">
           <div className="panel-row">
+
+            {/* PRODUK */}
             <div className="left-col">
               <section className="promo-banner">
                 <div className="promo-text">
-                  <span className="promo-eyebrow">Belanja Lebih Mudah</span>
+                  <span>
+                    Belanja Lebih Mudah
+                  </span>
+
                   <h1>
                     Produk Kebutuhan Harian
                     <br />
                     Kini Lebih Dekat
                   </h1>
+
                   <p>
-                    Temukan berbagai produk berkualitas dengan harga terbaik
-                    hanya di Indomart.
+                    Temukan berbagai produk berkualitas
+                    dengan harga terbaik hanya di Indomart.
                   </p>
                 </div>
 
-                <div className="promo-badge">Hemat Setiap Hari</div>
+                <div className="promo-badge">
+                  Hemat Setiap Hari
+                </div>
 
                 <div className="promo-image">
                   <Image
                     src="/banner/promo-belanja3.png"
-                    alt="Keranjang belanja Indomart"
+                    alt="Keranjang belanja"
                     fill
-                    sizes="260px"
-                    className="promo-image-img"
+                    sizes="170px"
                   />
                 </div>
               </section>
 
               <div className="panel transaksi-panel">
-                <div className="search-row">
-                  <div className="search-box">
-                    <Search size={16} strokeWidth={2} color="#8794ab" />
-                    <input
-                      type="text"
-                      placeholder="Scan barcode / cari produk..."
-                      value={query}
-                      onChange={(e) => setQuery(e.target.value)}
-                    />
-                    <ScanLine size={16} strokeWidth={2} color="#8794ab" />
-                  </div>
+                <div className="search-box">
+                  <Search size={16} />
+
+                  <input
+                    value={query}
+                    onChange={(e) =>
+                      setQuery(e.target.value)
+                    }
+                    placeholder="Scan barcode / cari produk..."
+                  />
+
+                  <ScanLine size={16} />
                 </div>
 
-                <div className="kategori-row-wrapper">
-                  <div className="kategori-row" ref={kategoriScrollRef}>
+                <div className="kategori-wrapper">
+                  <div
+                    className="kategori-row"
+                    ref={kategoriRef}
+                  >
                     <button
-                      type="button"
-                      className={`kategori-pill ${kategoriAktif === 'Semua' ? 'aktif' : ''}`}
-                      onClick={() => setKategoriAktif('Semua')}
+                      className={`kategori-pill ${
+                        kategoriAktif === 'Semua'
+                          ? 'aktif'
+                          : ''
+                      }`}
+                      onClick={() =>
+                        setKategoriAktif('Semua')
+                      }
                     >
                       Semua
                     </button>
@@ -271,9 +445,14 @@ export default function TransaksiPenjualanPage() {
                     {kategoriList.map((k) => (
                       <button
                         key={k.id}
-                        type="button"
-                        className={`kategori-pill ${kategoriAktif === k.nama ? 'aktif' : ''}`}
-                        onClick={() => setKategoriAktif(k.nama)}
+                        className={`kategori-pill ${
+                          kategoriAktif === k.nama
+                            ? 'aktif'
+                            : ''
+                        }`}
+                        onClick={() =>
+                          setKategoriAktif(k.nama)
+                        }
                       >
                         {k.nama}
                       </button>
@@ -281,159 +460,583 @@ export default function TransaksiPenjualanPage() {
                   </div>
 
                   <button
-                    type="button"
-                    className="kategori-scroll-btn"
+                    className="kategori-next"
                     onClick={geserKategori}
-                    aria-label="Geser kategori"
                   >
-                    <ChevronRight size={16} strokeWidth={2.2} color="#4b5875" />
+                    <ChevronRight size={16} />
                   </button>
                 </div>
 
-                {loadingProduk && (
-                  <div className="produk-status">Memuat produk...</div>
+                {loading && (
+                  <div className="status">
+                    Memuat produk...
+                  </div>
                 )}
 
-                {!loadingProduk && errorMuat && (
-                  <div className="produk-status produk-error">{errorMuat}</div>
+                {!loading && error && (
+                  <div className="status error">
+                    {error}
+                  </div>
                 )}
 
-                {!loadingProduk && !errorMuat && (
+                {!loading && !error && (
                   <div className="produk-grid">
                     {produkTersaring.map((p) => (
                       <button
                         key={p.id}
-                        type="button"
                         className="produk-card"
-                        onClick={() => tambahKeKeranjang(p)}
+                        onClick={() =>
+                          tambahProduk(p)
+                        }
                       >
                         <div className="produk-gambar">
                           <Image
-                            src={normalisasiGambar(p.gambar)}
+                            src={gambar(p.gambar)}
                             alt={p.nama}
                             fill
                             sizes="120px"
-                            className="produk-gambar-img"
                           />
                         </div>
 
-                        <div className="produk-nama">{p.nama}</div>
-                        <div className="produk-harga">{formatRupiah(p.harga)}</div>
+                        <div className="produk-nama">
+                          {p.nama}
+                        </div>
+
+                        <div className="produk-harga">
+                          {formatRupiah(p.harga)}
+                        </div>
                       </button>
                     ))}
 
-                    {produkTersaring.length === 0 && (
-                      <div className="produk-kosong">Produk tidak ditemukan.</div>
+                    {!produkTersaring.length && (
+                      <div className="produk-kosong">
+                        Produk tidak ditemukan.
+                      </div>
                     )}
                   </div>
                 )}
               </div>
             </div>
 
+            {/* KERANJANG */}
             <div className="panel keranjang-panel">
               <div className="keranjang-head">
                 <div className="keranjang-title">
-                  <div className="cart-icon-wrap">
-                    <ShoppingCart size={18} strokeWidth={2} color="#2f80ed" />
+                  <div className="cart-icon">
+                    <ShoppingCart size={18} />
                     {keranjang.length > 0 && (
-                      <span className="cart-badge">{keranjang.length}</span>
+                      <span>
+                        {keranjang.length}
+                      </span>
                     )}
                   </div>
+
                   <h2>Keranjang Belanja</h2>
                 </div>
 
                 <button
-                  type="button"
                   className="hapus-semua"
                   onClick={hapusSemua}
-                  disabled={keranjang.length === 0}
+                  disabled={!keranjang.length}
                 >
-                  <Trash2 size={13} strokeWidth={2} />
+                  <Trash2 size={13} />
                   Hapus Semua
                 </button>
               </div>
 
-              <div className="keranjang-list">
-                {keranjang.length === 0 && (
-                  <div className="keranjang-kosong">Keranjang masih kosong.</div>
+              {/* MEMBER + PROMO */}
+              <div
+                className="benefit-area"
+                ref={memberPromoRef}
+              >
+
+                {/* MEMBER */}
+                <div className="benefit-box">
+                  <div className="benefit-title">
+                    <div className="benefit-icon member">
+                      <Users size={14} />
+                    </div>
+
+                    <div>
+                      <strong>
+                        Member & Pelanggan
+                      </strong>
+                      <span>
+                        Pilih pelanggan untuk transaksi
+                      </span>
+                    </div>
+                  </div>
+
+                  <button
+                    className={`benefit-trigger ${
+                      showMember ? 'open' : ''
+                    }`}
+                    onClick={() => {
+                      setShowMember(!showMember);
+                      setShowPromo(false);
+                    }}
+                  >
+                    <div className="selected-left">
+                      <div className="selected-avatar">
+                        {memberTerpilih ? (
+                          inisial(memberTerpilih.nama)
+                        ) : (
+                          <UserRound size={16} />
+                        )}
+                      </div>
+
+                      <div className="selected-info">
+                        <strong>
+                          {memberTerpilih?.nama ||
+                            'Pelanggan Umum'}
+                        </strong>
+
+                        <span>
+                          {memberTerpilih
+                            ? `${memberTerpilih.telepon || '-'} • ${memberTerpilih.poin || 0} poin`
+                            : 'Transaksi tanpa member'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <ChevronDown
+                      size={16}
+                      className={
+                        showMember ? 'rotate' : ''
+                      }
+                    />
+                  </button>
+
+                  {showMember && (
+                    <div className="dropdown">
+                      <div className="dropdown-top">
+                        <div>
+                          <strong>Pilih Member</strong>
+                          <span>
+                            Member aktif dari database
+                          </span>
+                        </div>
+
+                        <button
+                          onClick={() =>
+                            setShowMember(false)
+                          }
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+
+                      <div className="dropdown-search">
+                        <Search size={14} />
+
+                        <input
+                          autoFocus
+                          value={memberSearch}
+                          onChange={(e) =>
+                            setMemberSearch(
+                              e.target.value
+                            )
+                          }
+                          placeholder="Cari nama / nomor telepon..."
+                        />
+                      </div>
+
+                      <button
+                        className={`option ${
+                          !memberTerpilih
+                            ? 'selected'
+                            : ''
+                        }`}
+                        onClick={() => {
+                          setMemberTerpilih(null);
+                          setMemberSearch('');
+                          setShowMember(false);
+                        }}
+                      >
+                        <div className="option-icon general">
+                          <UserRound size={15} />
+                        </div>
+
+                        <div className="option-info">
+                          <strong>
+                            Pelanggan Umum
+                          </strong>
+                          <span>
+                            Transaksi tanpa member
+                          </span>
+                        </div>
+
+                        {!memberTerpilih && (
+                          <Check size={15} />
+                        )}
+                      </button>
+
+                      <div className="option-list">
+                        {memberTersaring.length > 0 ? (
+                          memberTersaring.map((member) => (
+                            <button
+                              key={member.id}
+                              className={`option ${
+                                memberTerpilih?.id ===
+                                member.id
+                                  ? 'selected'
+                                  : ''
+                              }`}
+                              onClick={() => {
+                                setMemberTerpilih(
+                                  member
+                                );
+                                setMemberSearch('');
+                                setShowMember(false);
+                              }}
+                            >
+                              <div className="member-avatar">
+                                {inisial(member.nama)}
+                              </div>
+
+                              <div className="option-info">
+                                <strong>
+                                  {member.nama}
+                                </strong>
+
+                                <span>
+                                  {member.telepon ||
+                                    'Nomor belum tersedia'}
+                                </span>
+
+                                <small>
+                                  {member.poin || 0} poin
+                                </small>
+                              </div>
+
+                              {memberTerpilih?.id ===
+                                member.id && (
+                                <Check size={15} />
+                              )}
+                            </button>
+                          ))
+                        ) : (
+                          <div className="empty">
+                            <Users size={23} />
+                            <strong>
+                              Belum ada member
+                            </strong>
+                            <span>
+                              Belum ada data member aktif.
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* PROMO */}
+                <div className="benefit-box">
+                  <div className="benefit-title">
+                    <div className="benefit-icon promo">
+                      <Tag size={14} />
+                    </div>
+
+                    <div>
+                      <strong>
+                        Promo & Diskon
+                      </strong>
+                      <span>
+                        Gunakan promo yang tersedia
+                      </span>
+                    </div>
+                  </div>
+
+                  <button
+                    className={`benefit-trigger ${
+                      showPromo ? 'open' : ''
+                    }`}
+                    onClick={() => {
+                      setShowPromo(!showPromo);
+                      setShowMember(false);
+                    }}
+                  >
+                    <div className="selected-left">
+                      <div className="selected-avatar promo">
+                        {promoTerpilih ? (
+                          <Percent size={16} />
+                        ) : (
+                          <Tag size={16} />
+                        )}
+                      </div>
+
+                      <div className="selected-info">
+                        <strong>
+                          {promoTerpilih?.nama ||
+                            'Tanpa Promo'}
+                        </strong>
+
+                        <span>
+                          {promoTerpilih
+                            ? `${promoTerpilih.tipe || 'Promo'} • Diskon ${promoTerpilih.persen}%`
+                            : 'Tidak ada promo digunakan'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <ChevronDown
+                      size={16}
+                      className={
+                        showPromo ? 'rotate' : ''
+                      }
+                    />
+                  </button>
+
+                  {showPromo && (
+                    <div className="dropdown">
+                      <div className="dropdown-top">
+                        <div>
+                          <strong>Pilih Promo</strong>
+                          <span>
+                            Promo aktif dari database
+                          </span>
+                        </div>
+
+                        <button
+                          onClick={() =>
+                            setShowPromo(false)
+                          }
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+
+                      <div className="dropdown-search">
+                        <Search size={14} />
+
+                        <input
+                          autoFocus
+                          value={promoSearch}
+                          onChange={(e) =>
+                            setPromoSearch(
+                              e.target.value
+                            )
+                          }
+                          placeholder="Cari promo..."
+                        />
+                      </div>
+
+                      <button
+                        className={`option ${
+                          !promoTerpilih
+                            ? 'selected'
+                            : ''
+                        }`}
+                        onClick={() => {
+                          setPromoTerpilih(null);
+                          setPromoSearch('');
+                          setShowPromo(false);
+                        }}
+                      >
+                        <div className="option-icon no-promo">
+                          <X size={15} />
+                        </div>
+
+                        <div className="option-info">
+                          <strong>
+                            Tanpa Promo
+                          </strong>
+                          <span>
+                            Tidak menggunakan diskon
+                          </span>
+                        </div>
+
+                        {!promoTerpilih && (
+                          <Check size={15} />
+                        )}
+                      </button>
+
+                      <div className="option-list">
+                        {promoTersaring.length > 0 ? (
+                          promoTersaring.map((promo) => (
+                            <button
+                              key={promo.id}
+                              className={`option ${
+                                promoTerpilih?.id ===
+                                promo.id
+                                  ? 'selected'
+                                  : ''
+                              }`}
+                              onClick={() => {
+                                setPromoTerpilih(
+                                  promo
+                                );
+                                setPromoSearch('');
+                                setShowPromo(false);
+                              }}
+                            >
+                              <div className="promo-percent">
+                                {promo.persen}%
+                              </div>
+
+                              <div className="option-info">
+                                <strong>
+                                  {promo.nama}
+                                </strong>
+
+                                <span>
+                                  {promo.tipe ||
+                                    'Promo transaksi'}
+                                </span>
+
+                                <small>
+                                  {promo.mulai &&
+                                  promo.selesai
+                                    ? `${promo.mulai} - ${promo.selesai}`
+                                    : `Diskon ${promo.persen}%`}
+                                </small>
+                              </div>
+
+                              {promoTerpilih?.id ===
+                                promo.id && (
+                                <Check size={15} />
+                              )}
+                            </button>
+                          ))
+                        ) : (
+                          <div className="empty">
+                            <Tag size={23} />
+                            <strong>
+                              Belum ada promo
+                            </strong>
+                            <span>
+                              Belum ada promo aktif.
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* ISI KERANJANG */}
+              <div className="cart-list">
+                {!keranjang.length && (
+                  <div className="cart-empty">
+                    Keranjang masih kosong.
+                  </div>
                 )}
 
                 {keranjang.map((item) => (
-                  <div className="keranjang-item" key={item.id}>
-                    <div className="item-gambar">
+                  <div
+                    className="cart-item"
+                    key={item.id}
+                  >
+                    <div className="item-image">
                       <Image
-                        src={normalisasiGambar(item.gambar)}
+                        src={gambar(item.gambar)}
                         alt={item.nama}
                         fill
                         sizes="52px"
-                        className="item-gambar-img"
                       />
                     </div>
 
                     <div className="item-info">
-                      <div className="item-top">
-                        <span className="item-nama">{item.nama}</span>
+                      <div className="item-name-row">
+                        <span>
+                          {item.nama}
+                        </span>
+
                         <button
-                          type="button"
-                          className="item-close"
-                          aria-label={`Hapus ${item.nama}`}
-                          onClick={() => hapusItem(item.id)}
+                          onClick={() =>
+                            hapusItem(item.id)
+                          }
                         >
-                          <X size={14} strokeWidth={2} />
+                          <X size={14} />
                         </button>
                       </div>
-                      <div className="item-harga">{formatRupiah(item.harga)}</div>
+
+                      <div className="item-price">
+                        {formatRupiah(item.harga)}
+                      </div>
 
                       <div className="item-bottom">
-                        <div className="qty-control">
+                        <div className="qty">
                           <button
-                            type="button"
-                            onClick={() => ubahQty(item.id, -1)}
-                            aria-label="Kurangi"
+                            onClick={() =>
+                              ubahQty(item.id, -1)
+                            }
                           >
-                            <Minus size={13} strokeWidth={2.2} />
+                            <Minus size={13} />
                           </button>
+
                           <span>{item.qty}</span>
+
                           <button
-                            type="button"
-                            onClick={() => ubahQty(item.id, 1)}
-                            aria-label="Tambah"
+                            onClick={() =>
+                              ubahQty(item.id, 1)
+                            }
                           >
-                            <Plus size={13} strokeWidth={2.2} />
+                            <Plus size={13} />
                           </button>
                         </div>
-                        <div className="item-subtotal">
-                          {formatRupiah(item.harga * item.qty)}
-                        </div>
+
+                        <strong>
+                          {formatRupiah(
+                            item.harga * item.qty
+                          )}
+                        </strong>
                       </div>
                     </div>
                   </div>
                 ))}
               </div>
 
-              <div className="keranjang-footer">
+              {/* TOTAL */}
+              <div className="footer">
+                <div className="summary">
+                  <span>Subtotal</span>
+                  <strong>
+                    {formatRupiah(subtotal)}
+                  </strong>
+                </div>
+
+                {diskon > 0 && (
+                  <div className="summary discount">
+                    <span>
+                      <Tag size={12} />
+                      Diskon {promoTerpilih?.persen}%
+                    </span>
+
+                    <strong>
+                      -{formatRupiah(diskon)}
+                    </strong>
+                  </div>
+                )}
+
                 <div className="total-row">
-                  <span>Total</span>
-                  <span className="total-value">{formatRupiah(total)}</span>
+                  <strong>Total</strong>
+                  <strong>
+                    {formatRupiah(total)}
+                  </strong>
                 </div>
 
                 <button
-                  type="button"
-                  className="btn-bayar"
-                  disabled={keranjang.length === 0}
-                  onClick={handleBayarSekarang}
+                  className="pay"
+                  disabled={!keranjang.length}
+                  onClick={bayar}
                 >
-                  <CreditCard size={16} strokeWidth={2} />
+                  <CreditCard size={16} />
                   Bayar Sekarang
                 </button>
 
-                <div className="trust-badge">
-                  <ShieldCheck size={16} strokeWidth={2} color="#2f80ed" />
+                <div className="trust">
+                  <ShieldCheck size={16} />
                   <div>
-                    <div className="trust-title">Belanja Aman &amp; Mudah</div>
-                    <div className="trust-sub">
-                      Produk original, harga terjangkau, pembayaran aman
-                    </div>
+                    <strong>
+                      Belanja Aman & Mudah
+                    </strong>
+                    <span>
+                      Produk original, harga terjangkau,
+                      pembayaran aman
+                    </span>
                   </div>
                 </div>
               </div>
@@ -443,23 +1046,38 @@ export default function TransaksiPenjualanPage() {
       </div>
 
       <style jsx>{`
+        * {
+          box-sizing: border-box;
+        }
+
         .wrapper {
-          display: flex;
           min-height: 100vh;
+          display: flex;
           background: #eef3fb;
-          font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
           color: #16233d;
+          font-family: 'Segoe UI', system-ui, sans-serif;
         }
 
         .main {
           flex: 1;
           min-width: 0;
-          display: flex;
-          flex-direction: column;
+        }
+
+        .search-box svg {
+          color: #8794ab;
+          flex-shrink: 0;
+        }
+
+        .search-box input {
+          width: 100%;
+          border: 0;
+          outline: 0;
+          background: transparent;
+          font-size: 12px;
         }
 
         .content {
-          padding: 18px 20px 30px;
+          padding: 20px 20px 30px;
         }
 
         .panel-row {
@@ -476,83 +1094,85 @@ export default function TransaksiPenjualanPage() {
           min-width: 0;
         }
 
+        /* BANNER */
+
         .promo-banner {
+          min-height: 150px;
           position: relative;
           overflow: hidden;
-          border-radius: 16px;
-          padding: 14px 20px;
-          background: linear-gradient(120deg, #0b3d91 0%, #1e6fd9 100%);
-          color: #ffffff;
+          border-radius: 20px;
+          padding: 24px 28px;
+          background: linear-gradient(
+            120deg,
+            #0b3d91,
+            #1e6fd9
+          );
+          color: white;
           display: flex;
           align-items: center;
           justify-content: space-between;
-          min-height: 80px;
+          gap: 16px;
         }
 
         .promo-text {
-          position: relative;
           z-index: 1;
-          max-width: 320px;
+          max-width: 460px;
         }
 
-        .promo-eyebrow {
-          display: inline-block;
-          font-size: 11px;
-          font-weight: 700;
+        .promo-text span {
+          display: block;
           color: #ffd166;
-          margin-bottom: 8px;
+          font-size: 12px;
+          font-weight: 800;
         }
 
         .promo-text h1 {
-          margin: 0 0 6px;
-          font-size: 17px;
+          margin: 8px 0 8px;
+          font-size: 22px;
           font-weight: 800;
           line-height: 1.3;
+          letter-spacing: 0.2px;
         }
 
         .promo-text p {
           margin: 0;
-          font-size: 11.5px;
-          color: #dbe9fd;
-          line-height: 1.45;
+          font-size: 12.5px;
+          line-height: 1.5;
+          color: #e4eefc;
         }
 
         .promo-badge {
           position: absolute;
-          top: 10px;
-          right: 16px;
+          top: 16px;
+          right: 22px;
+          padding: 6px 14px;
           background: rgba(255, 255, 255, 0.16);
-          border: 1px solid rgba(255, 255, 255, 0.3);
+          border: 1px solid rgba(255, 255, 255, 0.35);
           border-radius: 20px;
-          padding: 3px 10px;
-          font-size: 9.5px;
+          font-size: 11px;
           font-weight: 700;
         }
 
         .promo-image {
           position: relative;
-          width: 100px;
-          height: 60px;
           flex-shrink: 0;
+          width: 170px;
+          height: 115px;
+          margin-top: 22px;
         }
 
-        .promo-image-img {
+        .promo-image img {
           object-fit: contain;
         }
 
         .panel {
-          background: #ffffff;
+          background: white;
           border-radius: 20px;
-          box-shadow: 0 10px 24px rgba(16, 41, 92, 0.06);
-          min-width: 0;
+          box-shadow: 0 10px 24px rgba(16,41,92,.06);
         }
 
         .transaksi-panel {
           padding: 22px 24px 26px;
-        }
-
-        .search-row {
-          margin-bottom: 16px;
         }
 
         .search-box {
@@ -561,24 +1181,12 @@ export default function TransaksiPenjualanPage() {
           gap: 8px;
           background: #f4f7fc;
           border: 1px solid #e6ebf3;
-          border-radius: 12px;
           padding: 11px 14px;
+          border-radius: 12px;
+          margin-bottom: 16px;
         }
 
-        .search-box input {
-          flex: 1;
-          border: none;
-          outline: none;
-          background: transparent;
-          font-size: 13px;
-          color: #16233d;
-        }
-
-        .search-box input::placeholder {
-          color: #a5aec2;
-        }
-
-        .kategori-row-wrapper {
+        .kategori-wrapper {
           display: flex;
           align-items: center;
           gap: 8px;
@@ -586,11 +1194,10 @@ export default function TransaksiPenjualanPage() {
         }
 
         .kategori-row {
+          flex: 1;
           display: flex;
           gap: 8px;
           overflow-x: auto;
-          flex: 1;
-          min-width: 0;
           scrollbar-width: none;
         }
 
@@ -600,55 +1207,39 @@ export default function TransaksiPenjualanPage() {
 
         .kategori-pill {
           flex-shrink: 0;
-          background: #ffffff;
           border: 1px solid #e2e6ee;
+          background: white;
           border-radius: 999px;
-          padding: 9px 18px;
-          font-size: 12.5px;
-          font-weight: 600;
+          padding: 8px 17px;
+          font-size: 12px;
           color: #5a6478;
           cursor: pointer;
-          white-space: nowrap;
-          transition: all 0.15s ease;
-        }
-
-        .kategori-pill:hover {
-          border-color: #2f80ed;
-          color: #2f80ed;
         }
 
         .kategori-pill.aktif {
+          color: white;
           background: #2f80ed;
           border-color: #2f80ed;
-          color: #ffffff;
         }
 
-        .kategori-scroll-btn {
-          flex-shrink: 0;
+        .kategori-next {
           width: 30px;
           height: 30px;
-          border-radius: 50%;
+          flex-shrink: 0;
           border: 1px solid #e2e6ee;
-          background: #ffffff;
-          display: flex;
-          align-items: center;
-          justify-content: center;
+          border-radius: 50%;
+          background: white;
           cursor: pointer;
-          transition: border-color 0.15s ease;
         }
 
-        .kategori-scroll-btn:hover {
-          border-color: #2f80ed;
-        }
-
-        .produk-status {
+        .status {
+          padding: 30px;
           text-align: center;
-          padding: 30px 0;
           color: #8794ab;
-          font-size: 13px;
+          font-size: 12px;
         }
 
-        .produk-error {
+        .status.error {
           color: #e2231a;
         }
 
@@ -659,16 +1250,13 @@ export default function TransaksiPenjualanPage() {
         }
 
         .produk-card {
-          display: flex;
-          flex-direction: column;
-          align-items: flex-start;
-          background: #f8fafd;
           border: 1px solid #eef1f8;
           border-radius: 14px;
-          padding: 16px;
-          cursor: pointer;
+          background: #f8fafd;
+          padding: 14px;
           text-align: left;
-          transition: border-color 0.15s ease, transform 0.1s ease;
+          cursor: pointer;
+          transition: .2s;
         }
 
         .produk-card:hover {
@@ -678,41 +1266,41 @@ export default function TransaksiPenjualanPage() {
 
         .produk-gambar {
           position: relative;
-          width: 100%;
           height: 76px;
           margin-bottom: 10px;
         }
 
-        .produk-gambar-img {
+        .produk-gambar img {
           object-fit: contain;
         }
 
         .produk-nama {
-          font-size: 13px;
+          font-size: 12.5px;
           font-weight: 700;
-          color: #16233d;
           margin-bottom: 4px;
         }
 
         .produk-harga {
-          font-size: 12.5px;
-          font-weight: 700;
           color: #2f80ed;
+          font-size: 12px;
+          font-weight: 800;
         }
 
         .produk-kosong {
           grid-column: 1 / -1;
           text-align: center;
-          padding: 30px 0;
+          padding: 30px;
           color: #8794ab;
-          font-size: 13px;
+          font-size: 12px;
         }
 
+        /* KERANJANG */
+
         .keranjang-panel {
-          display: flex;
-          flex-direction: column;
-          padding: 22px 22px 20px;
-          box-sizing: border-box;
+          padding: 20px 22px;
+          position: relative;
+          z-index: 5;
+          overflow: visible;
         }
 
         .keranjang-head {
@@ -728,42 +1316,41 @@ export default function TransaksiPenjualanPage() {
           gap: 8px;
         }
 
-        .cart-icon-wrap {
-          position: relative;
-          display: flex;
+        .keranjang-title h2 {
+          margin: 0;
+          font-size: 16px;
+          color: #10295c;
         }
 
-        .cart-badge {
+        .cart-icon {
+          position: relative;
+          color: #2f80ed;
+        }
+
+        .cart-icon span {
           position: absolute;
-          top: -6px;
+          top: -7px;
           right: -8px;
-          background: #e2231a;
-          color: #ffffff;
-          font-size: 9px;
-          font-weight: 800;
-          border-radius: 50%;
           width: 15px;
           height: 15px;
           display: flex;
           align-items: center;
           justify-content: center;
-        }
-
-        .keranjang-head h2 {
-          margin: 0;
-          font-size: 16px;
+          border-radius: 50%;
+          background: #e2231a;
+          color: white;
+          font-size: 8px;
           font-weight: 800;
-          color: #10295c;
         }
 
         .hapus-semua {
+          border: 0;
+          background: transparent;
+          color: #e2231a;
           display: flex;
           align-items: center;
           gap: 5px;
-          background: none;
-          border: none;
-          color: #e2231a;
-          font-size: 12px;
+          font-size: 11px;
           font-weight: 700;
           cursor: pointer;
         }
@@ -773,40 +1360,381 @@ export default function TransaksiPenjualanPage() {
           cursor: not-allowed;
         }
 
-        .keranjang-list {
+        /* MEMBER PROMO */
+
+        .benefit-area {
           display: flex;
           flex-direction: column;
-          gap: 14px;
-          margin-bottom: 12px;
-          max-height: 360px;
+          gap: 10px;
+          padding-bottom: 13px;
+          margin-bottom: 13px;
+          border-bottom: 1px solid #eef2f7;
+          position: relative;
+          z-index: 30;
+        }
+
+        .benefit-box {
+          position: relative;
+        }
+
+        .benefit-title {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 6px;
+        }
+
+        .benefit-title > div:last-child {
+          display: flex;
+          flex-direction: column;
+          gap: 1px;
+        }
+
+        .benefit-title strong {
+          font-size: 10.5px;
+          color: #25324a;
+        }
+
+        .benefit-title span {
+          font-size: 8px;
+          color: #9aa6b8;
+        }
+
+        .benefit-icon {
+          width: 27px;
+          height: 27px;
+          border-radius: 8px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .benefit-icon.member {
+          background: #eff6ff;
+          color: #2563eb;
+        }
+
+        .benefit-icon.promo {
+          background: #fff7ed;
+          color: #ea580c;
+        }
+
+        .benefit-trigger {
+          width: 100%;
+          border: 1px solid #e5eaf2;
+          background: linear-gradient(135deg,#fff,#f9fbff);
+          border-radius: 12px;
+          padding: 8px 10px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
+          text-align: left;
+          cursor: pointer;
+          transition: .2s;
+        }
+
+        .benefit-trigger:hover,
+        .benefit-trigger.open {
+          border-color: #93c5fd;
+          box-shadow: 0 5px 16px rgba(37,99,235,.08);
+        }
+
+        .selected-left {
+          min-width: 0;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .selected-avatar {
+          width: 32px;
+          height: 32px;
+          flex-shrink: 0;
+          border-radius: 9px;
+          background: linear-gradient(135deg,#2563eb,#60a5fa);
+          color: white;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 9px;
+          font-weight: 900;
+        }
+
+        .selected-avatar.promo {
+          background: linear-gradient(135deg,#f97316,#fb923c);
+        }
+
+        .selected-info {
+          min-width: 0;
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+        }
+
+        .selected-info strong,
+        .selected-info span {
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .selected-info strong {
+          font-size: 10.5px;
+          color: #172033;
+        }
+
+        .selected-info span {
+          font-size: 8px;
+          color: #94a3b8;
+        }
+
+        .rotate {
+          transform: rotate(180deg);
+          color: #2563eb;
+        }
+
+        /* DROPDOWN */
+
+        .dropdown {
+          position: absolute;
+          top: calc(100% + 6px);
+          left: 0;
+          right: 0;
+          padding: 9px;
+          background: white;
+          border: 1px solid #e4eaf2;
+          border-radius: 14px;
+          box-shadow: 0 18px 40px rgba(15,23,42,.14);
+          z-index: 100;
+          animation: dropdown .15s ease;
+        }
+
+        @keyframes dropdown {
+          from {
+            opacity: 0;
+            transform: translateY(-4px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        .dropdown-top {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 2px 2px 8px;
+        }
+
+        .dropdown-top div {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+        }
+
+        .dropdown-top strong {
+          font-size: 10.5px;
+        }
+
+        .dropdown-top span {
+          font-size: 8px;
+          color: #94a3b8;
+        }
+
+        .dropdown-top button {
+          width: 24px;
+          height: 24px;
+          border: 0;
+          border-radius: 7px;
+          background: #f8fafc;
+          color: #64748b;
+          cursor: pointer;
+        }
+
+        .dropdown-search {
+          height: 32px;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          padding: 0 8px;
+          background: #f8fafc;
+          border: 1px solid #e7ecf3;
+          border-radius: 8px;
+          margin-bottom: 6px;
+        }
+
+        .dropdown-search svg {
+          color: #94a3b8;
+        }
+
+        .dropdown-search input {
+          width: 100%;
+          border: 0;
+          outline: 0;
+          background: transparent;
+          font-size: 9px;
+        }
+
+        .option-list {
+          max-height: 175px;
           overflow-y: auto;
         }
 
-        .keranjang-kosong {
-          text-align: center;
-          padding: 24px 0;
-          color: #8794ab;
-          font-size: 13px;
-        }
-
-        .keranjang-item {
+        .option {
+          width: 100%;
+          min-height: 45px;
           display: flex;
-          gap: 12px;
-          border-bottom: 1px solid #f4f6fb;
-          padding-bottom: 14px;
+          align-items: center;
+          gap: 8px;
+          padding: 6px;
+          border: 1px solid transparent;
+          border-radius: 9px;
+          background: transparent;
+          text-align: left;
+          cursor: pointer;
         }
 
-        .item-gambar {
-          position: relative;
+        .option:hover {
+          background: #f8fafc;
+        }
+
+        .option.selected {
+          background: #eff6ff;
+          border-color: #dbeafe;
+        }
+
+        .option-icon,
+        .member-avatar {
+          width: 30px;
+          height: 30px;
+          flex-shrink: 0;
+          border-radius: 8px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .option-icon.general {
+          background: #f1f5f9;
+          color: #64748b;
+        }
+
+        .option-icon.no-promo {
+          background: #fff7ed;
+          color: #ea580c;
+        }
+
+        .member-avatar {
+          background: #dbeafe;
+          color: #1d4ed8;
+          font-size: 9px;
+          font-weight: 900;
+        }
+
+        .promo-percent {
+          width: 36px;
+          height: 30px;
+          flex-shrink: 0;
+          border-radius: 8px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: #fff1df;
+          color: #ea580c;
+          font-size: 9px;
+          font-weight: 900;
+        }
+
+        .option-info {
+          flex: 1;
+          min-width: 0;
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+        }
+
+        .option-info strong,
+        .option-info span,
+        .option-info small {
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .option-info strong {
+          font-size: 9.5px;
+          color: #1e293b;
+        }
+
+        .option-info span {
+          font-size: 8px;
+          color: #64748b;
+        }
+
+        .option-info small {
+          font-size: 7.5px;
+          color: #94a3b8;
+        }
+
+        .empty {
+          min-height: 90px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 4px;
+          color: #cbd5e1;
+          text-align: center;
+        }
+
+        .empty strong {
+          color: #64748b;
+          font-size: 9px;
+        }
+
+        .empty span {
+          color: #a3afbf;
+          font-size: 7.5px;
+        }
+
+        /* CART */
+
+        .cart-list {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+          max-height: 360px;
+          overflow-y: auto;
+          margin-bottom: 10px;
+        }
+
+        .cart-empty {
+          padding: 25px;
+          text-align: center;
+          color: #8794ab;
+          font-size: 12px;
+        }
+
+        .cart-item {
+          display: flex;
+          gap: 10px;
+          padding-bottom: 12px;
+          border-bottom: 1px solid #f4f6fb;
+        }
+
+        .item-image {
           width: 52px;
           height: 52px;
+          position: relative;
+          flex-shrink: 0;
           border-radius: 10px;
           background: #f4f7fc;
-          flex-shrink: 0;
           overflow: hidden;
         }
 
-        .item-gambar-img {
+        .item-image img {
           object-fit: contain;
           padding: 6px;
         }
@@ -816,172 +1744,203 @@ export default function TransaksiPenjualanPage() {
           min-width: 0;
         }
 
-        .item-top {
+        .item-name-row {
           display: flex;
-          align-items: center;
           justify-content: space-between;
-          gap: 8px;
+          gap: 5px;
         }
 
-        .item-nama {
-          font-size: 13px;
+        .item-name-row span {
+          font-size: 12px;
           font-weight: 700;
-          color: #16233d;
         }
 
-        .item-close {
-          background: none;
-          border: none;
+        .item-name-row button {
+          border: 0;
+          background: transparent;
           color: #c4cbdb;
           cursor: pointer;
-          padding: 2px;
-          flex-shrink: 0;
         }
 
-        .item-close:hover {
+        .item-name-row button:hover {
           color: #e2231a;
         }
 
-        .item-harga {
-          font-size: 12px;
-          color: #2f80ed;
-          font-weight: 700;
+        .item-price {
           margin-top: 2px;
+          color: #2f80ed;
+          font-size: 11px;
+          font-weight: 700;
         }
 
         .item-bottom {
+          margin-top: 7px;
           display: flex;
-          align-items: center;
           justify-content: space-between;
-          margin-top: 8px;
+          align-items: center;
         }
 
-        .qty-control {
+        .qty {
           display: flex;
           align-items: center;
-          gap: 8px;
+          gap: 7px;
         }
 
-        .qty-control button {
-          width: 24px;
-          height: 24px;
-          border-radius: 7px;
+        .qty button {
+          width: 23px;
+          height: 23px;
           border: 1px solid #e6ebf3;
-          background: #ffffff;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          cursor: pointer;
+          border-radius: 7px;
+          background: white;
           color: #2f80ed;
+          cursor: pointer;
         }
 
-        .qty-control span {
-          min-width: 18px;
+        .qty span {
+          min-width: 15px;
           text-align: center;
-          font-size: 12.5px;
+          font-size: 11px;
           font-weight: 700;
         }
 
-        .item-subtotal {
-          font-size: 12.5px;
-          font-weight: 800;
+        .item-bottom strong {
           color: #10295c;
+          font-size: 11.5px;
         }
 
-        .keranjang-footer {
-          margin-top: 6px;
+        .footer {
           border-top: 1px solid #f0f2f8;
-          padding-top: 14px;
+          padding-top: 13px;
         }
 
+        .summary,
         .total-row {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          margin-bottom: 14px;
         }
 
-        .total-row span:first-child {
-          font-size: 15px;
-          font-weight: 800;
-          color: #10295c;
+        .summary {
+          margin-bottom: 7px;
+          color: #8794ab;
+          font-size: 11px;
         }
 
-        .total-value {
-          font-size: 18px;
-          font-weight: 800;
-          color: #10295c;
+        .summary strong {
+          color: #4b5875;
         }
 
-        .btn-bayar {
-          width: 100%;
+        .discount span {
           display: flex;
           align-items: center;
-          justify-content: center;
-          gap: 8px;
-          padding: 13px 0;
-          border-radius: 12px;
-          font-size: 13.5px;
-          font-weight: 700;
-          cursor: pointer;
-          background: #2f80ed;
-          border: none;
-          color: #ffffff;
-          margin-bottom: 14px;
+          gap: 4px;
+          color: #ef8c00;
         }
 
-        .btn-bayar:hover:not(:disabled) {
+        .discount strong {
+          color: #ef8c00;
+        }
+
+        .total-row {
+          margin: 12px 0;
+          color: #10295c;
+          font-size: 15px;
+        }
+
+        .total-row strong:last-child {
+          font-size: 18px;
+        }
+
+        .pay {
+          width: 100%;
+          border: 0;
+          border-radius: 11px;
+          padding: 12px;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          gap: 7px;
+          background: #2f80ed;
+          color: white;
+          font-size: 12.5px;
+          font-weight: 700;
+          cursor: pointer;
+        }
+
+        .pay:hover:not(:disabled) {
           background: #1c67cf;
         }
 
-        .btn-bayar:disabled {
-          opacity: 0.5;
+        .pay:disabled {
+          opacity: .5;
           cursor: not-allowed;
         }
 
-        .trust-badge {
+        .trust {
+          margin-top: 12px;
+          padding: 10px 12px;
           display: flex;
-          align-items: flex-start;
-          gap: 10px;
+          gap: 8px;
           background: #f4f7fc;
-          border-radius: 12px;
-          padding: 12px 14px;
+          border-radius: 10px;
+          color: #2f80ed;
         }
 
-        .trust-title {
-          font-size: 12px;
-          font-weight: 700;
+        .trust div {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+        }
+
+        .trust strong {
           color: #16233d;
-          margin-bottom: 2px;
+          font-size: 10px;
         }
 
-        .trust-sub {
-          font-size: 10.5px;
+        .trust span {
           color: #8794ab;
-          line-height: 1.4;
+          font-size: 8.5px;
         }
 
         @media (max-width: 1150px) {
           .panel-row {
             grid-template-columns: 1fr;
           }
+
           .produk-grid {
             grid-template-columns: repeat(3, 1fr);
-          }
-          .promo-banner {
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 16px;
-          }
-          .promo-image {
-            width: 100%;
-            height: 100px;
           }
         }
 
         @media (max-width: 640px) {
           .produk-grid {
             grid-template-columns: repeat(2, 1fr);
+          }
+
+          .content {
+            padding: 10px;
+          }
+
+          .promo-banner {
+            padding: 18px 16px;
+          }
+
+          .promo-text h1 {
+            font-size: 17px;
+          }
+
+          .promo-image {
+            width: 100px;
+            height: 70px;
+          }
+
+          .dropdown {
+            position: fixed;
+            left: 16px;
+            right: 16px;
+            top: 50%;
+            max-height: 80vh;
+            overflow-y: auto;
           }
         }
       `}</style>

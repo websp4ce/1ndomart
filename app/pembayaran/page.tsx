@@ -1,224 +1,192 @@
 'use client';
 
-import { useEffect, useState, type ChangeEvent } from 'react';
+import {
+  useEffect,
+  useState,
+  type ChangeEvent,
+  type CSSProperties,
+} from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import SidebarKasir from '../components/SidebarKasir';
 import {
-  Wallet,
-  Banknote,
-  QrCode,
-  CreditCard,
-  ShoppingBag,
-  Percent,
-  Tag,
-  ArrowRight,
-  ArrowLeft,
-  CheckCircle2,
-  Printer,
-  RefreshCw,
-  X,
-  Loader2,
+  Store, Wallet, Banknote, QrCode, CreditCard, ShoppingBag,
+  Percent, ArrowLeft, ArrowRight, CheckCircle2, Printer,
+  RefreshCw, X, Loader2, Tag, ShieldCheck, Check
 } from 'lucide-react';
 
 type MetodeId = 'tunai' | 'qris' | 'debit' | 'ewallet';
 
-type Metode = {
-  id: MetodeId;
-  nama: string;
-  Icon: typeof Wallet;
-  cardBg: string;
-  iconBg: string;
-  textColor: string;
-};
-
-type ItemBelanja = {
+type Item = {
   id: string;
   nama: string;
   harga: number;
   qty: number;
-  gambar: string;
+  gambar?: string;
 };
 
-type TahapPembayaran = 'pilih' | 'proses' | 'berhasil';
+type Promo = {
+  nama?: string;
+  persen?: number;
+  diskon?: number;
+};
 
-type DetailBerhasil = {
+type Transaksi = {
+  items?: Item[];
+  keranjang?: Item[];
+  promo?: Promo | null;
+  promoTerpilih?: Promo | null;
+  selectedPromo?: Promo | null;
+  diskon?: number;
+};
+
+type Detail = {
   metode: string;
   totalBayar: number;
   kembalian: number;
 };
 
-const metodeList: Metode[] = [
-  {
-    id: 'tunai',
-    nama: 'Tunai',
-    Icon: Banknote,
-    cardBg: '#eafaf1',
-    iconBg: '#27ae60',
-    textColor: '#1e7a45',
-  },
-  {
-    id: 'qris',
-    nama: 'QRIS',
-    Icon: QrCode,
-    cardBg: '#eaf3ff',
-    iconBg: '#2f80ed',
-    textColor: '#1c5aa8',
-  },
-  {
-    id: 'debit',
-    nama: 'Debit',
-    Icon: CreditCard,
-    cardBg: '#fff2e5',
-    iconBg: '#f5a742',
-    textColor: '#a15c12',
-  },
-  {
-    id: 'ewallet',
-    nama: 'E-Wallet',
-    Icon: Wallet,
-    cardBg: '#f3edff',
-    iconBg: '#8a5cf6',
-    textColor: '#5b3aa8',
-  },
+const metode = [
+  { id: 'tunai' as const, nama: 'Tunai', desc: 'Bayar dengan uang cash', Icon: Banknote, bg: '#eafaf1', color: '#22a75d' },
+  { id: 'qris' as const, nama: 'QRIS', desc: 'Scan QR dari aplikasi apa pun', Icon: QrCode, bg: '#eaf3ff', color: '#2f80ed' },
+  { id: 'debit' as const, nama: 'Debit', desc: 'Gesek kartu di mesin EDC', Icon: CreditCard, bg: '#fff2e5', color: '#f08c1a' },
+  { id: 'ewallet' as const, nama: 'E-Wallet', desc: 'GoPay, DANA, OVO, ShopeePay', Icon: Wallet, bg: '#f3edff', color: '#8a5cf6' },
 ];
 
-type EwalletProvider = {
-  id: string;
-  nama: string;
-  warna: string;
-};
-
-const ewalletList: EwalletProvider[] = [
+const ewallet = [
   { id: 'gopay', nama: 'GoPay', warna: '#00aed6' },
   { id: 'dana', nama: 'DANA', warna: '#118eea' },
   { id: 'ovo', nama: 'OVO', warna: '#4c3494' },
   { id: 'shopeepay', nama: 'ShopeePay', warna: '#ee4d2d' },
 ];
 
-function formatRupiah(angka: number): string {
-  return 'Rp ' + angka.toLocaleString('id-ID');
-}
+const rupiah = (n: number) =>
+  'Rp ' + Number(n || 0).toLocaleString('id-ID');
 
-function formatWaktu(detik: number): string {
-  const menit = Math.floor(detik / 60);
-  const sisaDetik = detik % 60;
-  return `${String(menit).padStart(2, '0')}:${String(sisaDetik).padStart(2, '0')}`;
-}
+const waktu = (detik: number) =>
+  `${String(Math.floor(detik / 60)).padStart(2, '0')}:${String(
+    detik % 60
+  ).padStart(2, '0')}`;
 
 export default function PembayaranPage() {
   const router = useRouter();
+
   const [kasirId, setKasirId] = useState<string | null>(null);
-  const [metodeAktif, setMetodeAktif] = useState<MetodeId | null>(null);
-  const [kodePromo, setKodePromo] = useState('');
-  const [itemBelanja, setItemBelanja] = useState<ItemBelanja[]>([]);
+  const [items, setItems] = useState<Item[]>([]);
+  const [promo, setPromo] = useState<Promo | null>(null);
   const [diskon, setDiskon] = useState(0);
-
-  const [tahap, setTahap] = useState<TahapPembayaran>('pilih');
-  const [uangDiterima, setUangDiterima] = useState('');
-  const [detailBerhasil, setDetailBerhasil] = useState<DetailBerhasil | null>(null);
-
-  // Loading & error khusus proses simpan transaksi ke server, supaya
-  // tombol "Bayar" / "Konfirmasi Pembayaran" tidak bisa diklik dobel
-  // dan user tahu kalau penyimpanan gagal (bukan diam-diam dianggap sukses).
+  const [metodeAktif, setMetodeAktif] = useState<MetodeId | null>(null);
+  const [tahap, setTahap] = useState<'pilih' | 'proses' | 'berhasil'>('pilih');
+  const [uang, setUang] = useState('');
+  const [detail, setDetail] = useState<Detail | null>(null);
+  const [waktuTransaksi, setWaktuTransaksi] = useState('');
   const [menyimpan, setMenyimpan] = useState(false);
-  const [simpanError, setSimpanError] = useState('');
-
-  // Sub-langkah khusus E-Wallet: pilih provider dulu (GoPay/DANA/OVO/ShopeePay),
-  // baru lanjut ke tampilan QR.
-  const [ewalletProvider, setEwalletProvider] = useState<string | null>(null);
+  const [error, setError] = useState('');
+  const [provider, setProvider] = useState<string | null>(null);
   const [ewalletTahap, setEwalletTahap] = useState<'pilih' | 'qr'>('pilih');
-
-  // Hitung mundur khusus untuk metode non-tunai (mis. QRIS) selagi
-  // menunggu pelanggan menyelesaikan pembayaran.
-  const [sisaWaktu, setSisaWaktu] = useState(5 * 60);
+  const [timer, setTimer] = useState(300);
 
   useEffect(() => {
     try {
-      const raw = localStorage.getItem('indomart_user'); // sesuai key dari halaman login
-      if (raw) {
-        const user = JSON.parse(raw);
-        if (user?.email) setKasirId(user.email); // pakai email sebagai identitas kasir
-      }
-    } catch {
-      // biarkan kasirId null, nanti ditangani validasi saat simpan transaksi
-    }
+      const user = JSON.parse(localStorage.getItem('indomart_user') || '{}');
+      if (user.email) setKasirId(user.email);
 
-    try {
-      const rawKeranjang = localStorage.getItem('keranjangAktif');
-      if (rawKeranjang) {
-        const data = JSON.parse(rawKeranjang);
-        if (Array.isArray(data)) setItemBelanja(data);
+      const transaksi: Transaksi = JSON.parse(
+        localStorage.getItem('transaksiAktif') || '{}'
+      );
+
+      const keranjang = JSON.parse(
+        localStorage.getItem('keranjangAktif') || '[]'
+      );
+
+      const data = transaksi.items || transaksi.keranjang || keranjang;
+      setItems(Array.isArray(data) ? data : []);
+
+      const p =
+        transaksi.promo ||
+        transaksi.promoTerpilih ||
+        transaksi.selectedPromo ||
+        null;
+
+      setPromo(p);
+
+      const total = (data || []).reduce(
+        (a: number, i: Item) => a + Number(i.harga) * Number(i.qty),
+        0
+      );
+
+      let d = Number(transaksi.diskon || 0);
+
+      if (!d && p) {
+        const persen = Number(p.persen ?? p.diskon ?? 0);
+        if (persen > 0) d = Math.round((total * persen) / 100);
       }
-    } catch {
-      // kalau gagal dibaca, biarkan keranjang kosong
+
+      setDiskon(Math.min(Math.max(d, 0), total));
+    } catch (e) {
+      console.error(e);
     }
   }, []);
 
-  const jumlahItem = itemBelanja.length;
-  const totalBelanja = itemBelanja.reduce((sum, item) => sum + item.harga * item.qty, 0);
-  const grandTotal = Math.max(totalBelanja - diskon, 0);
+  const total = items.reduce(
+    (a, i) => a + Number(i.harga) * Number(i.qty),
+    0
+  );
 
-  const metodeTerpilih = metodeList.find((m) => m.id === metodeAktif) ?? null;
-  const providerAktif = ewalletList.find((p) => p.id === ewalletProvider) ?? null;
+  const grandTotal = Math.max(total - diskon, 0);
+  const uangDiterima = Number(uang) || 0;
+  const kembalian = Math.max(uangDiterima - grandTotal, 0);
+  const jumlahItem = items.reduce((a, i) => a + Number(i.qty), 0);
 
-  const angkaUangDiterima = Number(uangDiterima) || 0;
-  const kembalian = Math.max(angkaUangDiterima - grandTotal, 0);
-  const uangCukup = angkaUangDiterima >= grandTotal && grandTotal > 0;
+  const metodeDipilih = metode.find((m) => m.id === metodeAktif);
+  const providerDipilih = ewallet.find((e) => e.id === provider);
 
-  // Countdown berjalan hanya saat sedang di tahap "proses" dengan metode
-  // selain tunai (QRIS/Debit), dan untuk E-Wallet baru jalan setelah provider
-  // dipilih (sub-langkah 'qr'). Reset tiap kali metode/tahap berubah.
   useEffect(() => {
-    const perluCountdown =
-      tahap === 'proses' &&
-      !!metodeTerpilih &&
-      metodeTerpilih.id !== 'tunai' &&
-      (metodeTerpilih.id !== 'ewallet' || ewalletTahap === 'qr');
+    if (tahap !== 'proses' || metodeAktif === 'tunai') return;
 
-    if (!perluCountdown) return;
-
-    setSisaWaktu(5 * 60);
-    const interval = setInterval(() => {
-      setSisaWaktu((prev) => (prev > 0 ? prev - 1 : 0));
+    setTimer(300);
+    const t = setInterval(() => {
+      setTimer((x) => (x > 0 ? x - 1 : 0));
     }, 1000);
 
-    return () => clearInterval(interval);
-  }, [tahap, metodeTerpilih, ewalletTahap]);
+    return () => clearInterval(t);
+  }, [tahap, metodeAktif]);
 
-  const handleUangDiterimaChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const hanyaAngka = e.target.value.replace(/\D/g, '');
-    setUangDiterima(hanyaAngka);
-  };
-
-  const handlePilihMetode = (id: MetodeId) => {
+  const pilihMetode = (id: MetodeId) => {
     setMetodeAktif(id);
-    setUangDiterima('');
-    setEwalletProvider(null);
+    setUang('');
+    setProvider(null);
     setEwalletTahap('pilih');
-    setSimpanError('');
+    setError('');
     setTahap('proses');
   };
 
-  const handleGantiMetode = () => {
+  const kembali = () => {
     setMetodeAktif(null);
-    setUangDiterima('');
-    setEwalletProvider(null);
+    setUang('');
+    setProvider(null);
     setEwalletTahap('pilih');
-    setSimpanError('');
+    setError('');
     setTahap('pilih');
   };
 
-  // Kirim transaksi ke server. Dipakai bareng oleh pembayaran tunai
-  // maupun non-tunai supaya logikanya tidak duplikat.
-  async function simpanTransaksi(metode: string, jumlahDibayar: number, kembalianAkhir: number) {
+  const simpan = async (
+    metodeBayar: string,
+    dibayar: number,
+    kembaliBayar: number
+  ) => {
     if (!kasirId) {
-      setSimpanError('Data kasir tidak ditemukan. Silakan login ulang.');
+      setError('Data kasir tidak ditemukan. Silakan login ulang.');
+      return false;
+    }
+
+    if (!items.length) {
+      setError('Keranjang belanja masih kosong.');
       return false;
     }
 
     setMenyimpan(true);
-    setSimpanError('');
+    setError('');
 
     try {
       const res = await fetch('/api/transactions', {
@@ -226,105 +194,337 @@ export default function PembayaranPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           kasirId,
-          items: itemBelanja.map((item) => ({
-            id: item.id,
-            nama: item.nama,
-            harga: item.harga,
-            qty: item.qty,
+          items: items.map((i) => ({
+            id: i.id,
+            nama: i.nama,
+            harga: Number(i.harga),
+            qty: Number(i.qty),
           })),
           diskon,
-          kodePromo: kodePromo.trim() || null,
-          metode,
-          jumlahDibayar,
-          kembalian: kembalianAkhir,
+          kodePromo: promo?.nama || null,
+          metode: metodeBayar,
+          jumlahDibayar: dibayar,
+          kembalian: kembaliBayar,
         }),
       });
 
       const data = await res.json();
 
       if (!res.ok) {
-        setSimpanError(data.message || 'Gagal menyimpan transaksi ke server.');
+        setError(data?.message || 'Gagal menyimpan transaksi.');
         return false;
       }
 
       return true;
-    } catch (err) {
-      console.error(err);
-      setSimpanError('Terjadi kesalahan koneksi saat menyimpan transaksi.');
+    } catch {
+      setError('Terjadi kesalahan koneksi saat menyimpan transaksi.');
       return false;
     } finally {
       setMenyimpan(false);
     }
-  }
+  };
 
-  const handleBayarTunai = async () => {
-    if (!uangCukup || menyimpan) return;
+  const berhasil = (
+    metodeBayar: string,
+    dibayar: number,
+    kembaliBayar: number
+  ) => {
+    setWaktuTransaksi(
+      new Date().toLocaleString('id-ID', {
+        dateStyle: 'short',
+        timeStyle: 'short',
+      })
+    );
 
-    const sukses = await simpanTransaksi('Tunai', angkaUangDiterima, kembalian);
-    if (!sukses) return; // tetap di modal, tampilkan error, jangan pindah tahap
-
-    setDetailBerhasil({
-      metode: 'Tunai',
-      totalBayar: angkaUangDiterima,
-      kembalian,
+    setDetail({
+      metode: metodeBayar,
+      totalBayar: dibayar,
+      kembalian: kembaliBayar,
     });
+
     setTahap('berhasil');
   };
 
-  const handleKonfirmasiNonTunai = async () => {
-    if (!metodeTerpilih || menyimpan) return;
-    const namaMetode =
-      metodeTerpilih.id === 'ewallet' && providerAktif ? providerAktif.nama : metodeTerpilih.nama;
+  const bayarTunai = async () => {
+    if (uangDiterima < grandTotal || menyimpan) return;
 
-    const sukses = await simpanTransaksi(namaMetode, grandTotal, 0);
-    if (!sukses) return;
+    const ok = await simpan('Tunai', uangDiterima, kembalian);
 
-    setDetailBerhasil({
-      metode: namaMetode,
-      totalBayar: grandTotal,
-      kembalian: 0,
-    });
-    setTahap('berhasil');
+    if (ok) berhasil('Tunai', uangDiterima, kembalian);
   };
 
-  const handleCetakStruk = () => {
-    // TODO: sesuaikan path ini kalau halaman cetak struk kamu bukan di /struk
-    router.push('/struk');
+  const bayarNonTunai = async () => {
+    if (!metodeDipilih || menyimpan || grandTotal <= 0) return;
+
+    const nama =
+      metodeAktif === 'ewallet' && providerDipilih
+        ? providerDipilih.nama
+        : metodeDipilih.nama;
+
+    const ok = await simpan(nama, grandTotal, 0);
+
+    if (ok) berhasil(nama, grandTotal, 0);
   };
 
-  const handleTransaksiBaru = () => {
-    try {
-      localStorage.removeItem('keranjangAktif');
-    } catch {
-      // kalau gagal dihapus, tetap lanjut navigasi
+  /* CETAK KHUSUS STRUK */
+  const cetakStruk = () => {
+    if (!detail) return;
+
+    const isi = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Struk INDOMARET</title>
+        <style>
+          @page {
+            size: 80mm auto;
+            margin: 0;
+          }
+
+          * {
+            box-sizing: border-box;
+          }
+
+          body {
+            margin: 0;
+            padding: 7mm 5mm;
+            width: 80mm;
+            font-family: Arial, Helvetica, sans-serif;
+            color: #111;
+            background: #fff;
+            font-size: 11px;
+          }
+
+          .center {
+            text-align: center;
+          }
+
+          .logo {
+            width: 38px;
+            height: 38px;
+            margin: 0 auto 6px;
+            border-radius: 8px;
+            background: #eaf2ff;
+            color: #2f80ed;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+          }
+
+          h1 {
+            margin: 0;
+            font-size: 17px;
+            letter-spacing: .5px;
+          }
+
+          .sub {
+            margin-top: 3px;
+            color: #666;
+            font-size: 10px;
+          }
+
+          .line {
+            border-top: 1px dashed #aaa;
+            margin: 12px 0;
+          }
+
+          .item {
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
+            margin: 0 0 8px;
+          }
+
+          .item-left {
+            min-width: 0;
+          }
+
+          .nama {
+            font-weight: bold;
+            font-size: 11px;
+          }
+
+          .qty {
+            margin-top: 3px;
+            color: #777;
+            font-size: 10px;
+          }
+
+          .harga {
+            white-space: nowrap;
+            font-weight: bold;
+          }
+
+          .row {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            margin: 7px 0;
+          }
+
+          .bold {
+            font-weight: bold;
+          }
+
+          .green {
+            color: #198754;
+          }
+
+          .thanks {
+            margin-top: 14px;
+            text-align: center;
+            color: #777;
+            font-size: 10px;
+          }
+        </style>
+      </head>
+
+      <body>
+        <div class="center">
+          <div class="logo">⌂</div>
+          <h1>INDOMARET</h1>
+          <div class="sub">Struk Pembayaran</div>
+          <div class="sub">${waktuTransaksi}</div>
+        </div>
+
+        <div class="line"></div>
+
+        ${items
+          .map(
+            (item) => `
+              <div class="item">
+                <div class="item-left">
+                  <div class="nama">${item.nama}</div>
+                  <div class="qty">
+                    ${item.qty} x ${rupiah(item.harga)}
+                  </div>
+                </div>
+
+                <div class="harga">
+                  ${rupiah(item.harga * item.qty)}
+                </div>
+              </div>
+            `
+          )
+          .join('')}
+
+        <div class="line"></div>
+
+        <div class="row">
+          <span>Total Harga</span>
+          <span>${rupiah(total)}</span>
+        </div>
+
+        ${
+          diskon > 0
+            ? `
+              <div class="row green">
+                <span>Diskon</span>
+                <span>-${rupiah(diskon)}</span>
+              </div>
+            `
+            : ''
+        }
+
+        ${
+          promo?.nama
+            ? `
+              <div class="row">
+                <span>Promo</span>
+                <span>${promo.nama}</span>
+              </div>
+            `
+            : ''
+        }
+
+        <div class="line"></div>
+
+        <div class="row bold">
+          <span>Harga Setelah Diskon</span>
+          <span>${rupiah(grandTotal)}</span>
+        </div>
+
+        <div class="row">
+          <span>Metode Pembayaran</span>
+          <span class="bold">${detail.metode}</span>
+        </div>
+
+        <div class="row">
+          <span>Dibayar</span>
+          <span>${rupiah(detail.totalBayar)}</span>
+        </div>
+
+        ${
+          detail.metode === 'Tunai'
+            ? `
+              <div class="row">
+                <span>Kembalian</span>
+                <span class="bold">${rupiah(detail.kembalian)}</span>
+              </div>
+            `
+            : ''
+        }
+
+        <div class="line"></div>
+
+        <div class="thanks">
+          Terima kasih telah berbelanja
+        </div>
+
+        <script>
+          window.onload = function () {
+            window.print();
+            setTimeout(function () {
+              window.close();
+            }, 500);
+          };
+        </script>
+      </body>
+      </html>
+    `;
+
+    const win = window.open('', '_blank', 'width=400,height=700');
+
+    if (!win) {
+      alert('Popup diblokir browser. Izinkan popup untuk mencetak struk.');
+      return;
     }
+
+    win.document.open();
+    win.document.write(isi);
+    win.document.close();
+  };
+
+  const transaksiBaru = () => {
+    localStorage.removeItem('keranjangAktif');
+    localStorage.removeItem('transaksiAktif');
     router.push('/transaksi');
   };
 
-  // Sama seperti handleTransaksiBaru (bersihkan keranjang & reset state),
-  // tapi TIDAK redirect ke halaman transaksi. Setelah ditekan, tetap di
-  // halaman /pembayaran dengan Ringkasan Belanja & modal sudah kosong/tertutup.
-  const handleSelesai = () => {
-    try {
-      localStorage.removeItem('keranjangAktif');
-    } catch {
-      // kalau gagal dihapus, tetap lanjut reset state
-    }
-    setItemBelanja([]);
+  const selesai = () => {
+    localStorage.removeItem('keranjangAktif');
+    localStorage.removeItem('transaksiAktif');
+
+    setItems([]);
+    setPromo(null);
     setDiskon(0);
     setMetodeAktif(null);
-    setUangDiterima('');
-    setEwalletProvider(null);
-    setEwalletTahap('pilih');
-    setDetailBerhasil(null);
-    setSimpanError('');
+    setUang('');
+    setProvider(null);
+    setDetail(null);
     setTahap('pilih');
   };
 
-  const handleTerapkanPromo = () => {
-    // TODO: validasi kode promo ke server, lalu setDiskon() sesuai hasil dari server
-    console.log('Terapkan kode promo:', kodePromo);
-  };
+  const stepAktif = tahap === 'pilih' ? 1 : tahap === 'proses' ? 2 : 3;
+
+  const uangCepat = Array.from(
+    new Set(
+      [grandTotal, 50000, 100000, 200000].filter(
+        (n) => n > 0 && n >= grandTotal
+      )
+    )
+  ).slice(0, 4);
 
   return (
     <div className="wrapper">
@@ -332,486 +532,511 @@ export default function PembayaranPage() {
 
       <div className="main">
         <main className="content">
-          <div className="page-header">
-            <div className="page-icon">
-              <Wallet size={20} strokeWidth={2} color="#2f80ed" />
+          {/* HEADER HALAMAN */}
+          <div className="page-head">
+            <div className="page-title">
+              <div className="title-icon">
+                <Wallet size={22} color="#fff" />
+              </div>
+              <div>
+                <h1>Pembayaran</h1>
+                <p>Pilih metode pembayaran untuk menyelesaikan transaksi</p>
+              </div>
             </div>
-            <div>
-              <h1>Pembayaran</h1>
-              <p>Pilih metode pembayaran yang tersedia</p>
+
+            <div className="steps">
+              {['Pilih Metode', 'Bayar', 'Selesai'].map((s, i) => {
+                const n = i + 1;
+                const state =
+                  stepAktif > n ? 'done' : stepAktif === n ? 'now' : '';
+                return (
+                  <div className={`step ${state}`} key={s}>
+                    <span className="step-dot">
+                      {stepAktif > n ? <Check size={12} /> : n}
+                    </span>
+                    <em>{s}</em>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
-          <div className={`payment-grid ${tahap !== 'pilih' ? 'blur-belakang' : ''}`}>
-            <div className="metode-panel">
-              <div className="metode-grid">
-                {metodeList.map(({ id, nama, Icon, cardBg, iconBg, textColor }) => (
-                  <button
-                    key={id}
-                    type="button"
-                    className="metode-card-mini"
-                    style={{
-                      background: cardBg,
-                      borderColor: metodeAktif === id ? textColor : 'transparent',
-                    }}
-                    onClick={() => handlePilihMetode(id)}
-                  >
-                    <div className="metode-icon-mini" style={{ background: iconBg }}>
-                      <Icon size={20} strokeWidth={2} color="#ffffff" />
-                    </div>
-                    <span className="metode-nama-mini" style={{ color: textColor }}>
-                      {nama}
-                    </span>
-                  </button>
-                ))}
+          <div className={`grid ${tahap !== 'pilih' ? 'blur' : ''}`}>
+            {/* KIRI */}
+            <section className="left">
+              <div className="panel">
+                <div className="panel-head">
+                  <h3>Metode Pembayaran</h3>
+                  <span>Pilih salah satu</span>
+                </div>
+
+                <div className="methods">
+                  {metode.map((m) => (
+                    <button
+                      key={m.id}
+                      className={`method ${metodeAktif === m.id ? 'active' : ''}`}
+                      style={
+                        {
+                          '--c': m.color,
+                          '--bg': m.bg,
+                        } as CSSProperties
+                      }
+                      onClick={() => pilihMetode(m.id)}
+                    >
+                      <span className="method-icon">
+                        <m.Icon size={22} color="#fff" />
+                      </span>
+                      <div className="method-text">
+                        <b>{m.nama}</b>
+                        <small>{m.desc}</small>
+                      </div>
+                      <ArrowRight size={16} className="method-arrow" />
+                    </button>
+                  ))}
+                </div>
               </div>
 
-              <div className="promo-row">
+              <div className="panel promo">
                 <div className="promo-icon">
-                  <Tag size={17} strokeWidth={2} color="#2f80ed" />
+                  <Tag size={18} color="#f08c1a" />
                 </div>
-                <div className="promo-info">
-                  <div className="promo-title">Promo &amp; Diskon</div>
-                  <div className="promo-sub">Masukkan kode promo/kupon di sini</div>
+                <div className="promo-text">
+                  <small>Promo Digunakan</small>
+                  <b>{promo?.nama || 'Tidak Ada Promo'}</b>
+                  <span>
+                    {promo
+                      ? 'Promo sudah diterapkan dari transaksi'
+                      : 'Tidak ada promo yang digunakan'}
+                  </span>
                 </div>
+                {diskon > 0 && (
+                  <div className="promo-save">-{rupiah(diskon)}</div>
+                )}
               </div>
 
-              <div className="promo-form">
-                <input
-                  type="text"
-                  placeholder="Masukkan kode promo..."
-                  value={kodePromo}
-                  onChange={(e) => setKodePromo(e.target.value)}
-                />
-                <button type="button" onClick={handleTerapkanPromo}>
-                  Terapkan
-                </button>
+              <div className="secure">
+                <ShieldCheck size={17} />
+                <div>
+                  <b>Transaksi Aman</b>
+                  <span>Pembayaran tercatat otomatis ke sistem kasir.</span>
+                </div>
               </div>
-            </div>
+            </section>
 
-            <div className="ringkasan-panel">
-              <div className="ringkasan-head">
-                <div className="ringkasan-icon">
-                  <ShoppingBag size={19} strokeWidth={2} color="#ffffff" />
+            {/* KANAN */}
+            <section className="panel summary">
+              <div className="summary-title">
+                <div className="bag">
+                  <ShoppingBag size={20} color="#fff" />
                 </div>
                 <div>
                   <h2>Ringkasan Belanja</h2>
-                  <p>{jumlahItem} item yang kamu beli</p>
+                  <p>{jumlahItem} item</p>
                 </div>
               </div>
 
-              <div className="item-list">
-                {itemBelanja.length === 0 && (
-                  <div className="item-kosong">
-                    Belum ada barang. Silakan pilih produk di halaman Transaksi
-                    terlebih dahulu.
+              <div className="items">
+                {items.length ? (
+                  items.map((item) => (
+                    <div className="item" key={item.id}>
+                      <div className="thumb">
+                        {item.gambar ? (
+                          <img src={item.gambar} alt="" />
+                        ) : (
+                          <ShoppingBag size={18} color="#9aa7bc" />
+                        )}
+                      </div>
+                      <div className="item-info">
+                        <b>{item.nama}</b>
+                        <small>
+                          {item.qty} x {rupiah(item.harga)}
+                        </small>
+                      </div>
+                      <strong>{rupiah(item.harga * item.qty)}</strong>
+                    </div>
+                  ))
+                ) : (
+                  <div className="empty">
+                    <ShoppingBag size={26} />
+                    Belum ada barang.
+                  </div>
+                )}
+              </div>
+
+              <div className="price-box">
+                <div>
+                  <span>Total Harga</span>
+                  <span>{rupiah(total)}</span>
+                </div>
+
+                {diskon > 0 && (
+                  <div className="discount">
+                    <span>
+                      <Percent size={13} /> Diskon
+                    </span>
+                    <span>-{rupiah(diskon)}</span>
                   </div>
                 )}
 
-                {itemBelanja.map((item) => (
-                  <div className="item-row" key={item.id}>
-                    <div className="item-thumb">
-                      <img src={item.gambar} alt={item.nama} />
-                    </div>
-                    <div className="item-info">
-                      <div className="item-nama">{item.nama}</div>
-                      <div className="item-qty">{item.qty} pcs</div>
-                    </div>
-                    <div className="item-harga">
-                      {formatRupiah(item.harga * item.qty)}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="diskon-box">
-                <div className="diskon-icon">
-                  <Percent size={16} strokeWidth={2} color="#2f80ed" />
-                </div>
-                <div className="diskon-rows">
-                  <div className="diskon-row">
-                    <span>Total Harga (sebelum diskon)</span>
-                    <span className={diskon > 0 ? 'coret' : ''}>
-                      {formatRupiah(totalBelanja)}
-                    </span>
-                  </div>
-                  {diskon > 0 && (
-                    <div className="diskon-row">
-                      <span>Potongan Harga</span>
-                      <span className="diskon-value">-{formatRupiah(diskon)}</span>
-                    </div>
-                  )}
+                <div className="after">
+                  <b>Harga Setelah Diskon</b>
+                  <strong>{rupiah(grandTotal)}</strong>
                 </div>
               </div>
 
-              <div className="grand-total-box">
-                <span>Total Belanja</span>
-                <span className="grand-total-value">{formatRupiah(grandTotal)}</span>
+              <div className="grand">
+                <span>Total Pembayaran</span>
+                <strong>{rupiah(grandTotal)}</strong>
               </div>
 
-              {tahap === 'pilih' && (
-                <div className="hint-pilih-metode">
-                  <ArrowRight size={14} strokeWidth={2} />
-                  Pilih metode pembayaran di sebelah kiri untuk lanjut.
-                </div>
-              )}
-            </div>
+              <div className="hint">
+                <ArrowRight size={14} />
+                Pilih metode pembayaran untuk melanjutkan.
+              </div>
+            </section>
           </div>
 
+          {/* MODAL */}
           {tahap !== 'pilih' && (
-            <div className="modal-overlay" onClick={handleGantiMetode}>
-              <div className="modal-box" onClick={(e) => e.stopPropagation()}>
-                <div className="modal-header">
-                  {tahap === 'proses' && metodeTerpilih && metodeTerpilih.id === 'tunai' && (
-                    <div className="modal-title-row">
-                      <div className="modal-title-icon" style={{ background: metodeTerpilih.iconBg }}>
-                        <metodeTerpilih.Icon size={15} strokeWidth={2.2} color="#ffffff" />
-                      </div>
-                      <h2>Tunai</h2>
-                    </div>
-                  )}
-
-                  {tahap === 'berhasil' && <h2>Pembayaran Berhasil</h2>}
-
-                  {tahap === 'proses' && (
-                    <button
-                      type="button"
-                      className="modal-close"
-                      onClick={handleGantiMetode}
-                      aria-label="Tutup"
-                    >
-                      <X size={18} strokeWidth={2.2} color="#4b5875" />
-                    </button>
-                  )}
-                </div>
-
-                <div className="modal-body">
-                  {simpanError && (
-                    <div className="simpan-error">{simpanError}</div>
-                  )}
-
-                  {tahap === 'proses' && metodeTerpilih && metodeTerpilih.id === 'tunai' && (
-                    <div className="tunai-box">
-                      <div className="tunai-icon-row">
-                        <div className="tunai-icon">
-                          <Banknote size={18} strokeWidth={2} color="#27ae60" />
+            <div className="overlay">
+              <div className="modal">
+                {tahap === 'proses' && metodeDipilih && (
+                  <>
+                    <div className="modal-head">
+                      <div className="modal-title">
+                        <span style={{ background: metodeDipilih.color }}>
+                          <metodeDipilih.Icon size={17} color="#fff" />
+                        </span>
+                        <div>
+                          <h2>{metodeDipilih.nama}</h2>
+                          <small>{metodeDipilih.desc}</small>
                         </div>
-                        <span>Tunai</span>
                       </div>
-                      <p className="tunai-desc">
-                        Masukkan jumlah uang yang diterima dari pelanggan.
+                      <button onClick={kembali}>
+                        <X size={18} />
+                      </button>
+                    </div>
+
+                    <div className="modal-body">
+                      {error && <div className="error">{error}</div>}
+
+                      {metodeAktif === 'tunai' && (
+                        <div className="cash">
+                          <div className="total-modal">
+                            <span>Total Pembayaran</span>
+                            <strong>{rupiah(grandTotal)}</strong>
+                          </div>
+
+                          <label>Uang Diterima</label>
+
+                          <div className="money-input">
+                            <span>Rp</span>
+                            <input
+                              value={
+                                uang
+                                  ? Number(uang).toLocaleString('id-ID')
+                                  : ''
+                              }
+                              inputMode="numeric"
+                              placeholder="0"
+                              autoFocus
+                              onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                                setUang(e.target.value.replace(/\D/g, ''))
+                              }
+                            />
+                          </div>
+
+                          <div className="quick">
+                            {uangCepat.map((n, i) => (
+                              <button
+                                key={n}
+                                onClick={() => setUang(String(n))}
+                              >
+                                {i === 0 && n === grandTotal
+                                  ? 'Uang Pas'
+                                  : rupiah(n)}
+                              </button>
+                            ))}
+                          </div>
+
+                          <div className="change">
+                            <span>Kembalian</span>
+                            <strong>{rupiah(kembalian)}</strong>
+                          </div>
+
+                          <button
+                            className="primary"
+                            disabled={uangDiterima < grandTotal || menyimpan}
+                            onClick={bayarTunai}
+                          >
+                            {menyimpan ? (
+                              <Loader2 className="spin" size={16} />
+                            ) : (
+                              <CheckCircle2 size={16} />
+                            )}
+                            {menyimpan ? 'Menyimpan...' : 'Bayar Sekarang'}
+                          </button>
+
+                          <button className="back" onClick={kembali}>
+                            <ArrowLeft size={13} /> Kembali
+                          </button>
+                        </div>
+                      )}
+
+                      {metodeAktif === 'qris' && (
+                        <div className="qris">
+                          <small className="lead">Scan QR untuk membayar.</small>
+
+                          <div className="qr-img">
+                            <Image
+                              src="/qris/scan-gb.png"
+                              alt="QRIS"
+                              fill
+                              className="object"
+                            />
+                          </div>
+
+                          <strong className="amount">{rupiah(grandTotal)}</strong>
+
+                          <div className="waiting">
+                            <Loader2 className="spin" size={13} />
+                            Menunggu pembayaran... {waktu(timer)}
+                          </div>
+
+                          <button
+                            className="primary"
+                            onClick={bayarNonTunai}
+                            disabled={menyimpan}
+                          >
+                            {menyimpan ? 'Menyimpan...' : 'Konfirmasi Pembayaran'}
+                          </button>
+
+                          <button className="back" onClick={kembali}>
+                            <ArrowLeft size={13} /> Kembali
+                          </button>
+                        </div>
+                      )}
+
+                      {metodeAktif === 'debit' && (
+                        <div className="qris">
+                          <small className="lead">
+                            Lakukan pembayaran melalui mesin EDC.
+                          </small>
+
+                          <div className="total-modal">
+                            <span>Total Pembayaran</span>
+                            <strong>{rupiah(grandTotal)}</strong>
+                          </div>
+
+                          <div className="debit-img">
+                            <Image
+                              src="/debit/gb-debit.png"
+                              alt="EDC"
+                              fill
+                              className="object"
+                            />
+                          </div>
+
+                          <div className="waiting">
+                            <Loader2 className="spin" size={13} />
+                            Menunggu pembayaran... {waktu(timer)}
+                          </div>
+
+                          <button
+                            className="primary"
+                            onClick={bayarNonTunai}
+                            disabled={menyimpan}
+                          >
+                            {menyimpan ? 'Menyimpan...' : 'Konfirmasi Pembayaran'}
+                          </button>
+
+                          <button className="back" onClick={kembali}>
+                            <ArrowLeft size={13} /> Kembali
+                          </button>
+                        </div>
+                      )}
+
+                      {metodeAktif === 'ewallet' && ewalletTahap === 'pilih' && (
+                        <div className="ewallet">
+                          <small className="lead">Pilih e-wallet pelanggan.</small>
+
+                          <div className="wallet-grid">
+                            {ewallet.map((e) => (
+                              <button
+                                key={e.id}
+                                className={`wallet ${provider === e.id ? 'on' : ''}`}
+                                style={{
+                                  borderColor:
+                                    provider === e.id ? e.warna : 'transparent',
+                                }}
+                                onClick={() => setProvider(e.id)}
+                              >
+                                <span
+                                  className="wallet-ic"
+                                  style={{ background: e.warna }}
+                                >
+                                  <Wallet size={14} color="#fff" />
+                                </span>
+                                <span style={{ color: e.warna }}>
+                                  {e.nama}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+
+                          <div className="total-modal">
+                            <span>Total Pembayaran</span>
+                            <strong>{rupiah(grandTotal)}</strong>
+                          </div>
+
+                          <button
+                            className="primary"
+                            disabled={!provider}
+                            onClick={() => setEwalletTahap('qr')}
+                          >
+                            Lanjutkan <ArrowRight size={16} />
+                          </button>
+
+                          <button className="back" onClick={kembali}>
+                            <ArrowLeft size={13} /> Kembali
+                          </button>
+                        </div>
+                      )}
+
+                      {metodeAktif === 'ewallet' &&
+                        ewalletTahap === 'qr' &&
+                        providerDipilih && (
+                          <div className="qris">
+                            <small className="lead">
+                              Scan QR {providerDipilih.nama} untuk melakukan
+                              pembayaran.
+                            </small>
+
+                            <div className="qr-img">
+                              <Image
+                                src="/qris/scan-gb.png"
+                                alt="QR"
+                                fill
+                                className="object"
+                              />
+                            </div>
+
+                            <strong className="amount">{rupiah(grandTotal)}</strong>
+
+                            <div className="waiting">
+                              <Loader2 className="spin" size={13} />
+                              Menunggu pembayaran... {waktu(timer)}
+                            </div>
+
+                            <button
+                              className="primary"
+                              onClick={bayarNonTunai}
+                              disabled={menyimpan}
+                            >
+                              {menyimpan ? 'Menyimpan...' : 'Bayar'}
+                            </button>
+
+                            <button
+                              className="back"
+                              onClick={() => setEwalletTahap('pilih')}
+                            >
+                              <ArrowLeft size={13} /> Ganti E-Wallet
+                            </button>
+                          </div>
+                        )}
+                    </div>
+                  </>
+                )}
+
+                {tahap === 'berhasil' && detail && (
+                  <>
+                    <div className="success-head">
+                      <div className="success-ic">
+                        <CheckCircle2 size={30} color="#fff" />
+                      </div>
+                      <h2>Pembayaran Berhasil</h2>
+                      <p>Transaksi telah tersimpan</p>
+                    </div>
+
+                    <div className="receipt">
+                      <div className="receipt-logo">
+                        <Store size={23} />
+                      </div>
+
+                      <h2>INDOMARET</h2>
+                      <p>Struk Pembayaran</p>
+                      <small>{waktuTransaksi}</small>
+
+                      <div className="receipt-line" />
+
+                      {items.map((item) => (
+                        <div className="receipt-item" key={item.id}>
+                          <div>
+                            <b>{item.nama}</b>
+                            <small>
+                              {item.qty} x {rupiah(item.harga)}
+                            </small>
+                          </div>
+                          <b>{rupiah(item.harga * item.qty)}</b>
+                        </div>
+                      ))}
+
+                      <div className="receipt-line" />
+
+                      <div className="receipt-row">
+                        <span>Total Harga</span>
+                        <span>{rupiah(total)}</span>
+                      </div>
+
+                      {diskon > 0 && (
+                        <div className="receipt-row green">
+                          <span>Diskon</span>
+                          <span>-{rupiah(diskon)}</span>
+                        </div>
+                      )}
+
+                      <div className="receipt-row bold">
+                        <span>Harga Setelah Diskon</span>
+                        <span>{rupiah(grandTotal)}</span>
+                      </div>
+
+                      <div className="receipt-row">
+                        <span>Metode Pembayaran</span>
+                        <b>{detail.metode}</b>
+                      </div>
+
+                      <div className="receipt-row">
+                        <span>Dibayar</span>
+                        <span>{rupiah(detail.totalBayar)}</span>
+                      </div>
+
+                      {detail.metode === 'Tunai' && (
+                        <div className="receipt-row">
+                          <span>Kembalian</span>
+                          <b>{rupiah(detail.kembalian)}</b>
+                        </div>
+                      )}
+
+                      <div className="receipt-line" />
+
+                      <p className="thanks">
+                        Terima kasih telah berbelanja
                       </p>
 
-                      <div className="tunai-row">
-                        <span>Total Belanja</span>
-                        <span className="tunai-total">{formatRupiah(grandTotal)}</span>
-                      </div>
-
-                      <label className="tunai-label" htmlFor="uangDiterima">
-                        Uang Diterima
-                      </label>
-                      <div className="tunai-input-wrap">
-                        <span className="tunai-input-prefix">Rp</span>
-                        <input
-                          id="uangDiterima"
-                          type="text"
-                          inputMode="numeric"
-                          className="tunai-input"
-                          placeholder="0"
-                          value={uangDiterima ? Number(uangDiterima).toLocaleString('id-ID') : ''}
-                          onChange={handleUangDiterimaChange}
-                        />
-                      </div>
-
-                      <div className="tunai-row kembalian-row">
-                        <span>Kembalian</span>
-                        <span className="kembalian-value">{formatRupiah(kembalian)}</span>
-                      </div>
-
-                      <button
-                        type="button"
-                        className="btn-konfirmasi"
-                        disabled={!uangCukup || menyimpan}
-                        onClick={handleBayarTunai}
-                      >
-                        {menyimpan ? (
-                          <Loader2 size={16} className="spin" />
-                        ) : (
-                          <CheckCircle2 size={16} strokeWidth={2} />
-                        )}
-                        {menyimpan ? 'Menyimpan...' : 'Bayar'}
+                      <button className="print-btn" onClick={cetakStruk}>
+                        <Printer size={16} /> Cetak Struk
                       </button>
 
-                      <button type="button" className="qris-kembali" onClick={handleGantiMetode}>
-                        <ArrowLeft size={13} strokeWidth={2.2} />
-                        Kembali
+                      <button className="new-btn" onClick={transaksiBaru}>
+                        <RefreshCw size={16} /> Transaksi Baru
+                      </button>
+
+                      <button className="done-btn" onClick={selesai}>
+                        <CheckCircle2 size={16} /> Selesai
                       </button>
                     </div>
-                  )}
-
-                  {tahap === 'proses' && metodeTerpilih && metodeTerpilih.id === 'debit' && (
-                    <div className="debit-box">
-                      <div className="debit-header-row">
-                        <div className="debit-icon" style={{ background: metodeTerpilih.iconBg }}>
-                          <metodeTerpilih.Icon size={18} strokeWidth={2} color="#ffffff" />
-                        </div>
-                        <div>
-                          <div className="debit-nama">{metodeTerpilih.nama}</div>
-                          <div className="debit-desc">
-                            Silakan lakukan pembayaran melalui mesin EDC / gesek kartu.
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="debit-total-box">
-                        <span>Total Pembayaran</span>
-                        <span className="debit-total-value">{formatRupiah(grandTotal)}</span>
-                      </div>
-
-                      <div className="debit-gambar-wrap">
-                        <Image
-                          src="/debit/gb-debit.png"
-                          alt="Mesin EDC"
-                          fill
-                          className="debit-gambar-img"
-                        />
-                      </div>
-
-                      <div className="debit-countdown">
-                        <span className="qris-countdown-dot" />
-                        Menunggu pembayaran... {formatWaktu(sisaWaktu)}
-                      </div>
-
-                      <button
-                        type="button"
-                        className="btn-konfirmasi"
-                        disabled={grandTotal === 0 || menyimpan}
-                        onClick={handleKonfirmasiNonTunai}
-                      >
-                        {menyimpan ? (
-                          <Loader2 size={16} className="spin" />
-                        ) : (
-                          <CheckCircle2 size={16} strokeWidth={2} />
-                        )}
-                        {menyimpan ? 'Menyimpan...' : 'Konfirmasi Pembayaran'}
-                      </button>
-
-                      <button type="button" className="debit-kembali" onClick={handleGantiMetode}>
-                        <ArrowLeft size={13} strokeWidth={2.2} />
-                        Kembali
-                      </button>
-                    </div>
-                  )}
-
-                  {tahap === 'proses' && metodeTerpilih && metodeTerpilih.id === 'qris' && (
-                    <div className="qris-box">
-                      <div className="qris-icon-row">
-                        <div className="qris-icon" style={{ background: metodeTerpilih.iconBg }}>
-                          <metodeTerpilih.Icon size={18} strokeWidth={2} color="#ffffff" />
-                        </div>
-                        <div>
-                          <div className="qris-nama">{metodeTerpilih.nama}</div>
-                          <div className="qris-desc">
-                            Scan QR Code menggunakan aplikasi pembayaran kamu.
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="qris-gambar-wrap">
-                        <Image
-                          src="/qris/scan-gb.png"
-                          alt="QR Code Pembayaran"
-                          fill
-                          className="qris-gambar-img"
-                        />
-                      </div>
-
-                      <div className="tunai-row qris-total-row">
-                        <span>Total Pembayaran</span>
-                        <span className="tunai-total qris-total-value">{formatRupiah(grandTotal)}</span>
-                      </div>
-
-                      <div className="qris-countdown">
-                        <span className="qris-countdown-dot" />
-                        Menunggu pembayaran... {formatWaktu(sisaWaktu)}
-                      </div>
-
-                      <button
-                        type="button"
-                        className="btn-konfirmasi"
-                        disabled={grandTotal === 0 || menyimpan}
-                        onClick={handleKonfirmasiNonTunai}
-                      >
-                        {menyimpan ? (
-                          <Loader2 size={16} className="spin" />
-                        ) : (
-                          <CheckCircle2 size={16} strokeWidth={2} />
-                        )}
-                        {menyimpan ? 'Menyimpan...' : 'Bayar'}
-                      </button>
-
-                      <button type="button" className="qris-kembali" onClick={handleGantiMetode}>
-                        <ArrowLeft size={13} strokeWidth={2.2} />
-                        Kembali
-                      </button>
-                    </div>
-                  )}
-
-                  {tahap === 'proses' &&
-                    metodeTerpilih &&
-                    metodeTerpilih.id === 'ewallet' &&
-                    ewalletTahap === 'pilih' && (
-                      <div className="ewallet-box">
-                        <div className="debit-header-row">
-                          <div className="debit-icon" style={{ background: metodeTerpilih.iconBg }}>
-                            <metodeTerpilih.Icon size={18} strokeWidth={2} color="#ffffff" />
-                          </div>
-                          <div>
-                            <div className="debit-nama">{metodeTerpilih.nama}</div>
-                            <div className="debit-desc">Pilih e-wallet yang kamu punya.</div>
-                          </div>
-                        </div>
-
-                        <div className="ewallet-grid">
-                          {ewalletList.map((provider) => (
-                            <button
-                              key={provider.id}
-                              type="button"
-                              className="ewallet-pill"
-                              style={{
-                                borderColor: ewalletProvider === provider.id ? provider.warna : 'transparent',
-                              }}
-                              onClick={() => setEwalletProvider(provider.id)}
-                            >
-                              <Wallet size={15} strokeWidth={2} color={provider.warna} />
-                              <span style={{ color: provider.warna }}>{provider.nama}</span>
-                            </button>
-                          ))}
-                        </div>
-
-                        <div className="debit-total-box">
-                          <span>Total Pembayaran</span>
-                          <span className="debit-total-value">{formatRupiah(grandTotal)}</span>
-                        </div>
-
-                        <button
-                          type="button"
-                          className="btn-konfirmasi ewallet-lanjut"
-                          disabled={!ewalletProvider}
-                          onClick={() => setEwalletTahap('qr')}
-                        >
-                          Lanjutkan Pembayaran
-                          <ArrowRight size={16} strokeWidth={2} />
-                        </button>
-
-                        <button type="button" className="qris-kembali" onClick={handleGantiMetode}>
-                          <ArrowLeft size={13} strokeWidth={2.2} />
-                          Kembali
-                        </button>
-                      </div>
-                    )}
-
-                  {tahap === 'proses' &&
-                    metodeTerpilih &&
-                    metodeTerpilih.id === 'ewallet' &&
-                    ewalletTahap === 'qr' &&
-                    providerAktif && (
-                      <div className="qris-box">
-                        <div className="qris-icon-row">
-                          <div className="qris-icon" style={{ background: providerAktif.warna }}>
-                            <Wallet size={18} strokeWidth={2} color="#ffffff" />
-                          </div>
-                          <div>
-                            <div className="qris-nama">{providerAktif.nama}</div>
-                            <div className="qris-desc">
-                              Scan kode QR di aplikasi {providerAktif.nama} kamu.
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="qris-gambar-wrap">
-                          <Image
-                            src="/qris/scan-gb.png"
-                            alt="QR Code Pembayaran"
-                            fill
-                            className="qris-gambar-img"
-                          />
-                        </div>
-
-                        <div className="tunai-row qris-total-row">
-                          <span>Total Pembayaran</span>
-                          <span className="tunai-total qris-total-value">{formatRupiah(grandTotal)}</span>
-                        </div>
-
-                        <div className="qris-countdown">
-                          <span className="qris-countdown-dot" />
-                          Menunggu pembayaran... {formatWaktu(sisaWaktu)}
-                        </div>
-
-                        <button
-                          type="button"
-                          className="btn-konfirmasi"
-                          disabled={grandTotal === 0 || menyimpan}
-                          onClick={handleKonfirmasiNonTunai}
-                        >
-                          {menyimpan ? (
-                            <Loader2 size={16} className="spin" />
-                          ) : (
-                            <CheckCircle2 size={16} strokeWidth={2} />
-                          )}
-                          {menyimpan ? 'Menyimpan...' : 'Bayar'}
-                        </button>
-
-                        <button
-                          type="button"
-                          className="qris-kembali"
-                          onClick={() => setEwalletTahap('pilih')}
-                        >
-                          <ArrowLeft size={13} strokeWidth={2.2} />
-                          Ganti Metode
-                        </button>
-                      </div>
-                    )}
-
-                  {tahap === 'berhasil' && detailBerhasil && (
-                    <div className="berhasil-box">
-                      <div className="berhasil-icon">
-                        <CheckCircle2 size={44} strokeWidth={2} color="#27ae60" />
-                      </div>
-                      <h2 className="berhasil-judul">Pembayaran Berhasil!</h2>
-
-                      <div className="berhasil-info">
-                        <div className="berhasil-row">
-                          <span>Metode Pembayaran</span>
-                          <strong>{detailBerhasil.metode}</strong>
-                        </div>
-                        <div className="berhasil-row">
-                          <span>Total Pembayaran</span>
-                          <strong>{formatRupiah(detailBerhasil.totalBayar)}</strong>
-                        </div>
-                        {detailBerhasil.metode === 'Tunai' && (
-                          <div className="berhasil-row">
-                            <span>Kembalian</span>
-                            <strong>{formatRupiah(detailBerhasil.kembalian)}</strong>
-                          </div>
-                        )}
-                      </div>
-
-                      <button type="button" className="btn-cetak" onClick={handleCetakStruk}>
-                        <Printer size={16} strokeWidth={2} />
-                        Cetak Struk
-                      </button>
-                      <button type="button" className="btn-transaksi-baru" onClick={handleTransaksiBaru}>
-                        <RefreshCw size={16} strokeWidth={2} />
-                        Transaksi Baru
-                      </button>
-                      <button type="button" className="btn-selesai" onClick={handleSelesai}>
-                        <CheckCircle2 size={16} strokeWidth={2} />
-                        Selesai
-                      </button>
-                    </div>
-                  )}
-                </div>
+                  </>
+                )}
               </div>
             </div>
           )}
@@ -819,1027 +1044,743 @@ export default function PembayaranPage() {
       </div>
 
       <style jsx>{`
+        * { box-sizing: border-box; }
+
         .wrapper {
-          display: flex;
           min-height: 100vh;
-          background: #f4f6fb;
-          font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+          display: flex;
+          background:
+            radial-gradient(900px 400px at 100% -10%, #dbe8ff 0%, transparent 60%),
+            linear-gradient(180deg, #f4f7fd, #eef2fa);
           color: #16233d;
+          font-family: 'Segoe UI', system-ui, sans-serif;
         }
 
-        .main {
-          flex: 1;
-          min-width: 0;
-          display: flex;
-          flex-direction: column;
-        }
+        .main { flex: 1; min-width: 0; }
 
         .content {
-          padding: 24px 28px 36px;
+          padding: 30px 34px 40px;
+          max-width: 1180px;
         }
 
-        .page-header {
+        /* HEADER */
+        .page-head {
           display: flex;
           align-items: center;
-          gap: 12px;
-          margin-bottom: 22px;
+          justify-content: space-between;
+          gap: 20px;
+          flex-wrap: wrap;
+          margin-bottom: 26px;
         }
 
-        .page-icon {
-          width: 40px;
-          height: 40px;
-          border-radius: 11px;
-          background: #e7f1ff;
+        .page-title { display: flex; align-items: center; gap: 14px; }
+
+        .title-icon {
+          width: 50px;
+          height: 50px;
+          border-radius: 15px;
+          background: linear-gradient(135deg, #1e6fd9, #0b3d91);
           display: flex;
           align-items: center;
           justify-content: center;
-          flex-shrink: 0;
+          box-shadow: 0 10px 22px rgba(30, 111, 217, .32);
         }
 
-        .page-header h1 {
-          margin: 0 0 2px;
-          font-size: 21px;
-          font-weight: 800;
-          color: #10295c;
-        }
-
-        .page-header p {
+        .page-title h1 {
           margin: 0;
+          font-size: 25px;
+          font-weight: 800;
+          color: #0f2557;
+          letter-spacing: -.3px;
+        }
+
+        .page-title p {
+          margin: 3px 0 0;
+          color: #7a89a3;
           font-size: 12.5px;
-          color: #8794ab;
         }
 
-        .payment-grid {
+        .steps {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          padding: 7px 10px;
+          background: rgba(255, 255, 255, .8);
+          border: 1px solid #e6ecf6;
+          border-radius: 999px;
+          box-shadow: 0 6px 16px rgba(16, 41, 92, .05);
+        }
+
+        .step {
+          display: flex;
+          align-items: center;
+          gap: 7px;
+          padding: 5px 12px 5px 6px;
+          border-radius: 999px;
+          color: #9aa8bf;
+        }
+
+        .step em { font-style: normal; font-size: 11.5px; font-weight: 600; }
+
+        .step-dot {
+          width: 22px;
+          height: 22px;
+          border-radius: 50%;
+          background: #eaeff8;
+          font-size: 10.5px;
+          font-weight: 800;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .step.now { background: #eaf2ff; color: #1c5aa8; }
+        .step.now .step-dot { background: #2f80ed; color: #fff; }
+        .step.done { color: #22a75d; }
+        .step.done .step-dot { background: #22a75d; color: #fff; }
+
+        /* GRID */
+        .grid {
           display: grid;
-          grid-template-columns: 1.6fr 1fr;
-          gap: 18px;
+          grid-template-columns: 1.5fr 1fr;
+          gap: 22px;
           align-items: start;
-          max-width: 1080px;
+          transition: filter .2s;
         }
 
-        .metode-panel {
-          background: #ffffff;
-          border: 1px solid #eef1f8;
-          border-radius: 18px;
-          padding: 18px;
-          box-shadow: 0 10px 24px rgba(16, 41, 92, 0.06);
+        .left { display: flex; flex-direction: column; gap: 18px; }
+
+        .panel {
+          background: #fff;
+          border: 1px solid #edf1f8;
+          border-radius: 22px;
+          padding: 22px;
+          box-shadow: 0 14px 34px rgba(16, 41, 92, .07);
         }
 
-        .payment-grid.blur-belakang {
-          filter: blur(2px);
-          pointer-events: none;
-          user-select: none;
-        }
-
-        .modal-overlay {
-          position: fixed;
-          inset: 0;
-          background: rgba(10, 20, 45, 0.55);
-          backdrop-filter: blur(3px);
+        .panel-head {
           display: flex;
-          align-items: center;
-          justify-content: center;
-          z-index: 50;
-          padding: 20px;
-        }
-
-        .modal-box {
-          width: 100%;
-          max-width: 440px;
-          max-height: 88vh;
-          overflow-y: auto;
-          background: #ffffff;
-          border-radius: 18px;
-          box-shadow: 0 24px 60px rgba(8, 15, 35, 0.35);
-        }
-
-        .modal-header {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          background: #ffffff;
-          padding: 20px 20px 4px;
-          border-radius: 18px 18px 0 0;
-          position: sticky;
-          top: 0;
-        }
-
-        .modal-title-row {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-
-        .modal-title-icon {
-          width: 26px;
-          height: 26px;
-          border-radius: 8px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          flex-shrink: 0;
-        }
-
-        .modal-header h2 {
-          margin: 0;
-          font-size: 17px;
-          font-weight: 800;
-          color: #10295c;
-        }
-
-        .modal-close {
-          margin-left: auto;
-          background: #f1f4f9;
-          border: none;
-          border-radius: 9px;
-          width: 30px;
-          height: 30px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          cursor: pointer;
-          flex-shrink: 0;
-        }
-
-        .modal-close:hover {
-          background: #e4e9f2;
-        }
-
-        .modal-body {
-          padding: 20px;
-        }
-
-        .simpan-error {
-          background: #fdecea;
-          color: #c0392b;
-          border-radius: 10px;
-          padding: 10px 12px;
-          font-size: 11.5px;
-          font-weight: 600;
-          margin-bottom: 14px;
-        }
-
-        .spin {
-          animation: spin 0.8s linear infinite;
-        }
-
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-
-        .berhasil-judul {
-          margin: 0 0 16px;
-          font-size: 17px;
-          font-weight: 800;
-          color: #10295c;
-        }
-
-        .metode-grid {
-          display: grid;
-          grid-template-columns: repeat(4, 1fr);
-          gap: 12px;
+          align-items: baseline;
+          justify-content: space-between;
           margin-bottom: 16px;
         }
 
-        .metode-card-mini {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          gap: 9px;
-          padding: 18px 10px;
-          border-radius: 14px;
-          border: 1.5px solid transparent;
-          cursor: pointer;
-          transition: border-color 0.15s ease, transform 0.1s ease;
+        .panel-head h3 { margin: 0; font-size: 15px; color: #0f2557; font-weight: 800; }
+        .panel-head span { font-size: 11px; color: #9aa8bf; }
+
+        /* METODE */
+        .methods {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 14px;
         }
 
-        .metode-card-mini:hover {
-          transform: translateY(-2px);
-        }
-
-        .metode-icon-mini {
-          width: 42px;
-          height: 42px;
-          border-radius: 12px;
+        .method {
+          position: relative;
           display: flex;
           align-items: center;
-          justify-content: center;
-          flex-shrink: 0;
-        }
-
-        .metode-nama-mini {
-          font-size: 12.5px;
-          font-weight: 800;
-        }
-
-        .promo-row {
-          width: 100%;
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          background: none;
-          border: none;
-          border-top: 1px solid #f0f2f8;
-          padding-top: 14px;
-          cursor: pointer;
+          gap: 14px;
+          padding: 18px 16px;
           text-align: left;
+          background: #fff;
+          border: 1.5px solid #e8edf6;
+          border-radius: 18px;
+          cursor: pointer;
+          transition: all .2s ease;
+          overflow: hidden;
+        }
+
+        .method::before {
+          content: '';
+          position: absolute;
+          inset: 0;
+          background: var(--bg);
+          opacity: 0;
+          transition: opacity .2s;
+        }
+
+        .method:hover {
+          transform: translateY(-3px);
+          border-color: var(--c);
+          box-shadow: 0 14px 28px rgba(16, 41, 92, .1);
+        }
+
+        .method:hover::before, .method.active::before { opacity: 1; }
+        .method.active { border-color: var(--c); }
+
+        .method > * { position: relative; }
+
+        .method-icon {
+          width: 50px;
+          height: 50px;
+          flex-shrink: 0;
+          border-radius: 15px;
+          background: var(--c);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          box-shadow: 0 8px 16px color-mix(in srgb, var(--c) 35%, transparent);
+        }
+
+        .method-text { flex: 1; min-width: 0; }
+        .method-text b { display: block; font-size: 14px; color: #10295c; }
+        .method-text small { display: block; margin-top: 3px; font-size: 10.5px; color: #7a89a3; line-height: 1.35; }
+
+        .method-arrow { color: #b5c0d3; transition: all .2s; }
+        .method:hover .method-arrow { color: var(--c); transform: translateX(3px); }
+
+        /* PROMO */
+        .promo {
+          display: flex;
+          align-items: center;
+          gap: 14px;
+          padding: 16px 20px;
         }
 
         .promo-icon {
-          width: 38px;
-          height: 38px;
-          border-radius: 10px;
-          background: #e7f1ff;
+          width: 46px;
+          height: 46px;
+          border-radius: 14px;
+          background: #fff4e5;
           display: flex;
           align-items: center;
           justify-content: center;
-          flex-shrink: 0;
         }
 
-        .promo-info {
-          flex: 1;
-          min-width: 0;
-        }
+        .promo-text { flex: 1; min-width: 0; }
+        .promo-text small { display: block; font-size: 10px; color: #9aa8bf; font-weight: 600; }
+        .promo-text b { display: block; margin: 2px 0; font-size: 13.5px; color: #10295c; }
+        .promo-text span { font-size: 10.5px; color: #7a89a3; }
 
-        .promo-title {
-          font-size: 13.5px;
-          font-weight: 800;
-          color: #10295c;
-          margin-bottom: 2px;
-        }
-
-        .promo-sub {
+        .promo-save {
+          padding: 6px 12px;
+          background: #eafaf1;
+          color: #22a75d;
+          border-radius: 999px;
           font-size: 11.5px;
-          color: #8794ab;
-        }
-
-        .promo-form {
-          display: flex;
-          gap: 8px;
-          margin-top: 12px;
-        }
-
-        .promo-form input {
-          flex: 1;
-          border: 1px solid #e6ebf3;
-          border-radius: 10px;
-          padding: 10px 12px;
-          font-size: 12.5px;
-          outline: none;
-          background: #f8fafd;
-          color: #16233d;
-        }
-
-        .promo-form input::placeholder {
-          color: #a5aec2;
-        }
-
-        .promo-form button {
-          background: #2f80ed;
-          color: #ffffff;
-          border: none;
-          border-radius: 10px;
-          padding: 0 16px;
-          font-size: 12.5px;
-          font-weight: 700;
-          cursor: pointer;
-        }
-
-        .promo-form button:hover {
-          background: #1c67cf;
-        }
-
-        .step-header {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          margin-bottom: 16px;
-        }
-
-        .step-back {
-          background: none;
-          border: none;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 2px;
-          margin-right: 2px;
-        }
-
-        .step-badge {
-          width: 24px;
-          height: 24px;
-          border-radius: 50%;
-          background: #2f80ed;
-          color: #ffffff;
-          font-size: 12px;
           font-weight: 800;
+          white-space: nowrap;
+        }
+
+        .secure {
           display: flex;
           align-items: center;
-          justify-content: center;
-          flex-shrink: 0;
-        }
-
-        .step-badge.badge-sukses {
-          background: #27ae60;
-        }
-
-        .step-header h3 {
-          margin: 0;
-          font-size: 15px;
-          font-weight: 800;
-          color: #10295c;
-        }
-
-        .tunai-box {
-          background: #f3fbf6;
+          gap: 11px;
+          padding: 13px 16px;
+          background: rgba(47, 128, 237, .07);
+          border: 1px dashed #b9d3f7;
           border-radius: 14px;
-          padding: 14px;
+          color: #2f80ed;
         }
 
-        .tunai-icon-row {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          margin-bottom: 6px;
-        }
+        .secure b { display: block; font-size: 11.5px; color: #10295c; }
+        .secure span { font-size: 10.5px; color: #7a89a3; }
 
-        .tunai-icon {
-          width: 28px;
-          height: 28px;
-          border-radius: 8px;
-          background: #ffffff;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          flex-shrink: 0;
-        }
+        /* RINGKASAN */
+        .summary { position: sticky; top: 24px; }
 
-        .tunai-icon-row span {
-          font-size: 13px;
-          font-weight: 800;
-          color: #10295c;
-        }
+        .summary-title { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
 
-        .tunai-desc {
-          margin: 0 0 10px;
-          font-size: 11px;
-          color: #4b5875;
-        }
-
-        .tunai-row {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          background: #ffffff;
-          border-radius: 9px;
-          padding: 9px 11px;
-          font-size: 12px;
-          font-weight: 700;
-          color: #4b5875;
-          margin-bottom: 9px;
-        }
-
-        .tunai-total {
-          color: #10295c;
-          font-weight: 800;
-        }
-
-        .tunai-label {
-          display: block;
-          font-size: 11px;
-          font-weight: 700;
-          color: #4b5875;
-          margin-bottom: 5px;
-        }
-
-        .tunai-input-wrap {
-          position: relative;
-          margin-bottom: 8px;
-        }
-
-        .tunai-input-prefix {
-          position: absolute;
-          left: 12px;
-          top: 50%;
-          transform: translateY(-50%);
-          font-size: 13px;
-          font-weight: 700;
-          color: #6b95c4;
-          pointer-events: none;
-        }
-
-        .tunai-input {
-          width: 100%;
-          box-sizing: border-box;
-          border: 1.5px solid #cfe9d9;
-          border-radius: 9px;
-          padding: 10px 12px 10px 34px;
-          font-size: 14px;
-          font-weight: 500;
-          color: #10295c;
-          outline: none;
-          background: #ffffff;
-          transition: border-color 0.15s ease;
-        }
-
-        .tunai-input:focus {
-          border-color: #2f80ed;
-        }
-
-        .tunai-input::placeholder {
-          color: #a5aec2;
-          font-weight: 600;
-        }
-
-        .kembalian-row {
-          margin-bottom: 12px;
-        }
-
-        .kembalian-value {
-          color: #27ae60;
-          font-weight: 800;
-        }
-
-        .btn-konfirmasi {
-          width: 100%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 8px;
-          padding: 13px 0;
-          border-radius: 12px;
-          font-size: 13.5px;
-          font-weight: 700;
-          cursor: pointer;
-          background: #2f80ed;
-          border: none;
-          color: #ffffff;
-        }
-
-        .btn-konfirmasi:hover:not(:disabled) {
-          background: #1c67cf;
-        }
-
-        .btn-konfirmasi:disabled {
-          opacity: 0.5;
-          cursor: not-allowed;
-        }
-
-        .qris-box {
-          background: #eaf3ff;
+        .bag {
+          width: 46px;
+          height: 46px;
           border-radius: 14px;
-          padding: 16px;
-        }
-
-        .qris-icon-row {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          margin-bottom: 14px;
-        }
-
-        .qris-icon {
-          width: 34px;
-          height: 34px;
-          border-radius: 9px;
+          background: linear-gradient(135deg, #1e6fd9, #0b3d91);
           display: flex;
           align-items: center;
           justify-content: center;
-          flex-shrink: 0;
+          box-shadow: 0 8px 18px rgba(30, 111, 217, .3);
         }
 
-        .qris-nama {
-          font-size: 13px;
-          font-weight: 800;
-          color: #10295c;
-        }
+        .summary-title h2 { margin: 0; font-size: 16px; color: #10295c; font-weight: 800; }
+        .summary-title p { margin: 2px 0 0; font-size: 11px; color: #8794ab; }
 
-        .qris-desc {
-          font-size: 10.5px;
-          color: #6b7d9c;
-          margin-top: 1px;
-        }
-
-        .qris-gambar-wrap {
-          position: relative;
-          width: 160px;
-          height: 160px;
-          margin: 0 auto 14px;
-          background: #ffffff;
-          border-radius: 12px;
-          overflow: hidden;
-        }
-
-        .qris-gambar-img {
-          object-fit: contain;
-          padding: 8px;
-        }
-
-        .qris-total-row {
-          justify-content: center;
+        .items {
+          display: flex;
           flex-direction: column;
-          gap: 4px;
-          text-align: center;
+          gap: 9px;
+          max-height: 300px;
+          overflow-y: auto;
+          padding-right: 2px;
         }
 
-        .qris-total-value {
-          font-size: 18px;
-        }
-
-        .qris-countdown {
+        .item {
           display: flex;
           align-items: center;
-          justify-content: center;
-          gap: 6px;
-          background: #ffffff;
-          border-radius: 10px;
-          padding: 9px 0;
-          margin: 12px 0;
-          font-size: 12px;
-          font-weight: 700;
-          color: #2f80ed;
-        }
-
-        .qris-countdown-dot {
-          width: 7px;
-          height: 7px;
-          border-radius: 50%;
-          background: #2f80ed;
-          animation: qris-pulse 1s infinite;
-        }
-
-        @keyframes qris-pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.3; }
-        }
-
-        .qris-kembali {
-          width: 100%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 6px;
-          background: none;
-          border: none;
-          color: #4b5875;
-          font-size: 12px;
-          font-weight: 600;
-          cursor: pointer;
-          margin-top: 10px;
-        }
-
-        .qris-kembali:hover {
-          color: #2f80ed;
-        }
-
-        .debit-box {
-          background: #ffffff;
-          border: 1px solid #eef1f8;
+          gap: 11px;
+          padding: 9px;
+          background: #f7f9fd;
+          border: 1px solid #eef2f9;
           border-radius: 14px;
         }
 
-        .debit-header-row {
-          display: flex;
-          align-items: flex-start;
-          gap: 12px;
-          padding: 16px 16px 14px;
-        }
-
-        .debit-icon {
-          width: 40px;
-          height: 40px;
+        .thumb {
+          width: 46px;
+          height: 46px;
+          flex-shrink: 0;
+          background: #fff;
           border-radius: 11px;
           display: flex;
           align-items: center;
           justify-content: center;
-          flex-shrink: 0;
+          overflow: hidden;
         }
 
-        .debit-nama {
-          font-size: 14px;
-          font-weight: 800;
-          color: #10295c;
-          margin-bottom: 3px;
-        }
+        .thumb img { width: 100%; height: 100%; object-fit: contain; }
 
-        .debit-desc {
+        .item-info { flex: 1; min-width: 0; }
+        .item-info b { display: block; font-size: 11.5px; color: #10295c; }
+        .item-info small { display: block; margin-top: 2px; font-size: 10px; color: #8794ab; }
+        .item > strong { font-size: 11.5px; color: #10295c; white-space: nowrap; }
+
+        .empty {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 6px;
+          padding: 26px;
+          color: #aab6ca;
           font-size: 11.5px;
-          color: #8794ab;
-          line-height: 1.45;
         }
 
-        .debit-total-box {
+        .price-box {
+          margin-top: 16px;
+          padding: 14px 16px;
+          background: #f4f7fd;
+          border-radius: 14px;
+        }
+
+        .price-box > div {
+          display: flex;
+          justify-content: space-between;
+          margin: 7px 0;
+          font-size: 11.5px;
+          color: #4b5875;
+        }
+
+        .discount { color: #22a75d !important; }
+        .discount span { display: flex; align-items: center; gap: 4px; }
+
+        .after {
+          padding-top: 10px;
+          margin-top: 10px !important;
+          border-top: 1px dashed #c9d6ea;
+          color: #10295c !important;
+        }
+
+        .after strong { font-size: 14px; }
+
+        .grand {
+          margin-top: 14px;
+          padding: 18px;
+          border-radius: 16px;
+          background: linear-gradient(120deg, #0b3d91, #1e6fd9);
+          color: #dbe9fd;
           display: flex;
           flex-direction: column;
           gap: 4px;
-          background: #f4f7fc;
-          padding: 14px 16px;
-          font-size: 12px;
-          font-weight: 700;
-          color: #4b5875;
-        }
-
-        .debit-total-value {
-          font-size: 19px;
-          font-weight: 800;
-          color: #10295c;
-        }
-
-        .debit-gambar-wrap {
-          position: relative;
-          width: 100%;
-          height: 150px;
-          margin: 4px 0;
-        }
-
-        .debit-gambar-img {
-          object-fit: contain;
-        }
-
-        .debit-countdown {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 6px;
-          background: #f4f7fc;
-          border-radius: 10px;
-          margin: 4px 16px 14px;
-          padding: 9px 0;
-          font-size: 12px;
-          font-weight: 700;
-          color: #2f80ed;
-        }
-
-        .debit-box .btn-konfirmasi {
-          margin: 4px 16px 14px;
-          width: calc(100% - 32px);
-        }
-
-        .debit-kembali {
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          background: none;
-          border: none;
-          color: #2f80ed;
-          font-size: 12.5px;
-          font-weight: 700;
-          cursor: pointer;
-          padding: 0 16px 16px;
-        }
-
-        .debit-kembali:hover {
-          color: #1c67cf;
-        }
-
-        .ewallet-box {
-          background: #ffffff;
-          border: 1px solid #eef1f8;
-          border-radius: 14px;
-        }
-
-        .ewallet-grid {
-          display: grid;
-          grid-template-columns: repeat(2, 1fr);
-          gap: 10px;
-          padding: 0 16px 14px;
-        }
-
-        .ewallet-pill {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          background: #f8fafd;
-          border: 1.5px solid transparent;
-          border-radius: 10px;
-          padding: 12px 14px;
-          cursor: pointer;
-          font-size: 12.5px;
-          font-weight: 700;
-          transition: border-color 0.15s ease, transform 0.1s ease;
-        }
-
-        .ewallet-pill:hover {
-          transform: translateY(-1px);
-        }
-
-        .ewallet-box .debit-total-box {
-          margin: 0 16px 14px;
-          border-radius: 10px;
-        }
-
-        .ewallet-lanjut {
-          margin: 4px 16px 14px;
-          width: calc(100% - 32px);
-        }
-
-        .berhasil-box {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          text-align: center;
-          background: #f8fafd;
-          border-radius: 16px;
-          padding: 28px 20px 22px;
-        }
-
-        .berhasil-icon {
-          width: 76px;
-          height: 76px;
-          border-radius: 50%;
-          background: #eafaf1;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          margin-bottom: 14px;
-        }
-
-        .berhasil-box h2 {
-          margin: 0 0 16px;
-          font-size: 17px;
-          font-weight: 800;
-          color: #10295c;
-        }
-
-        .berhasil-info {
-          width: 100%;
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-          margin-bottom: 20px;
-        }
-
-        .berhasil-row {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          font-size: 12.5px;
-          color: #4b5875;
-        }
-
-        .berhasil-row strong {
-          color: #10295c;
-          font-weight: 800;
-        }
-
-        .btn-cetak {
-          width: 100%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 8px;
-          padding: 12px 0;
-          border-radius: 12px;
-          font-size: 13px;
-          font-weight: 700;
-          cursor: pointer;
-          background: #e7f1ff;
-          border: none;
-          color: #1c5aa8;
-          margin-bottom: 10px;
-        }
-
-        .btn-cetak:hover {
-          background: #d7e8ff;
-        }
-
-        .btn-transaksi-baru {
-          width: 100%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 8px;
-          padding: 12px 0;
-          border-radius: 12px;
-          font-size: 13px;
-          font-weight: 700;
-          cursor: pointer;
-          background: #2f80ed;
-          border: none;
-          color: #ffffff;
-        }
-
-        .btn-transaksi-baru:hover {
-          background: #1c67cf;
-        }
-
-        .btn-selesai {
-          width: 100%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 8px;
-          padding: 12px 0;
-          border-radius: 12px;
-          font-size: 13px;
-          font-weight: 700;
-          cursor: pointer;
-          background: #f1f4f9;
-          border: none;
-          color: #4b5875;
-          margin-top: 10px;
-        }
-
-        .btn-selesai:hover {
-          background: #e4e9f2;
-        }
-
-        .ringkasan-panel {
-          background: #ffffff;
-          border: 1px solid #eef1f8;
-          border-radius: 18px;
-          padding: 20px 20px 18px;
-          box-shadow: 0 10px 24px rgba(16, 41, 92, 0.06);
-        }
-
-        .ringkasan-head {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          margin-bottom: 18px;
-        }
-
-        .ringkasan-icon {
-          width: 42px;
-          height: 42px;
-          border-radius: 12px;
-          background: #10295c;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          flex-shrink: 0;
-        }
-
-        .ringkasan-head h2 {
-          margin: 0 0 2px;
-          font-size: 16px;
-          font-weight: 800;
-          color: #10295c;
-        }
-
-        .ringkasan-head p {
-          margin: 0;
           font-size: 11.5px;
-          color: #8794ab;
+          box-shadow: 0 12px 24px rgba(30, 111, 217, .28);
         }
 
-        .item-list {
+        .grand strong { font-size: 24px; color: #fff; letter-spacing: -.3px; }
+
+        .hint {
+          margin-top: 12px;
+          padding: 10px 12px;
+          background: #f7f9fd;
+          border-radius: 11px;
+          font-size: 10.5px;
+          color: #8794ab;
           display: flex;
-          flex-direction: column;
-          gap: 12px;
-          margin-bottom: 16px;
+          gap: 6px;
+          align-items: center;
         }
 
-        .item-kosong {
-          text-align: center;
-          padding: 20px 8px;
-          font-size: 12px;
-          color: #8794ab;
-          background: #f8fafd;
-          border-radius: 12px;
-        }
+        /* MODAL */
+        .blur { filter: blur(3px); pointer-events: none; }
 
-        .item-row {
+        .overlay {
+          position: fixed;
+          inset: 0;
+          z-index: 50;
+          background: rgba(10, 20, 45, .55);
+          backdrop-filter: blur(6px);
           display: flex;
           align-items: center;
-          gap: 12px;
-          background: #f8fafd;
-          border-radius: 14px;
-          padding: 10px 12px;
+          justify-content: center;
+          padding: 20px;
+          animation: fade .2s ease;
         }
 
-        .item-thumb {
-          width: 44px;
-          height: 44px;
-          border-radius: 10px;
-          background: #ffffff;
-          flex-shrink: 0;
-          overflow: hidden;
+        .modal {
+          width: 100%;
+          max-width: 450px;
+          max-height: 92vh;
+          overflow: auto;
+          background: #fff;
+          border-radius: 26px;
+          box-shadow: 0 30px 70px rgba(8, 15, 35, .4);
+          animation: pop .25s cubic-bezier(.2, .9, .3, 1.2);
+        }
+
+        @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes pop { from { opacity: 0; transform: translateY(14px) scale(.96); } to { opacity: 1; transform: none; } }
+
+        .modal-head {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 20px 22px 6px;
+        }
+
+        .modal-title { display: flex; align-items: center; gap: 12px; }
+
+        .modal-title span {
+          width: 40px;
+          height: 40px;
+          border-radius: 12px;
           display: flex;
           align-items: center;
           justify-content: center;
         }
 
-        .item-thumb img {
-          width: 100%;
-          height: 100%;
-          object-fit: contain;
-          padding: 4px;
+        .modal-title h2 { margin: 0; font-size: 18px; font-weight: 800; color: #10295c; }
+        .modal-title small { display: block; margin-top: 2px; font-size: 10.5px; color: #8794ab; }
+
+        .modal-head > button {
+          border: 0;
+          background: #f1f4f9;
+          border-radius: 10px;
+          width: 34px;
+          height: 34px;
+          cursor: pointer;
+          color: #5a6982;
+          transition: background .15s;
         }
 
-        .item-info {
-          flex: 1;
-          min-width: 0;
-        }
+        .modal-head > button:hover { background: #e4e9f2; }
 
-        .item-nama {
-          font-size: 13px;
-          font-weight: 800;
-          color: #10295c;
-        }
+        .modal-body { padding: 14px 22px 22px; }
 
-        .item-qty {
-          font-size: 11px;
-          color: #8794ab;
-          margin-top: 1px;
-        }
-
-        .item-harga {
-          font-size: 13.5px;
-          font-weight: 800;
-          color: #10295c;
-          flex-shrink: 0;
-        }
-
-        .diskon-box {
-          display: flex;
-          gap: 10px;
-          background: #eaf2ff;
-          border-radius: 14px;
-          padding: 13px 14px;
+        .error {
+          padding: 10px 12px;
+          background: #fdecea;
+          color: #c0392b;
+          border-radius: 10px;
+          font-size: 11.5px;
           margin-bottom: 12px;
         }
 
-        .diskon-icon {
-          width: 32px;
-          height: 32px;
-          border-radius: 9px;
-          background: #ffffff;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          flex-shrink: 0;
-        }
+        .cash, .ewallet, .qris { border-radius: 18px; overflow: hidden; }
 
-        .diskon-rows {
-          flex: 1;
+        .lead { display: block; margin: 2px 2px 12px; color: #7a89a3; font-size: 11.5px; }
+
+        .total-modal {
+          padding: 15px 18px;
+          background: linear-gradient(120deg, #0b3d91, #1e6fd9);
+          border-radius: 16px;
           display: flex;
           flex-direction: column;
-          gap: 6px;
+          gap: 3px;
+          color: #dbe9fd;
+          font-size: 11px;
+          margin-bottom: 4px;
         }
 
-        .diskon-row {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
+        .total-modal strong { font-size: 25px; color: #fff; letter-spacing: -.3px; }
+
+        .cash label {
+          display: block;
+          margin: 16px 2px 7px;
           font-size: 11.5px;
           font-weight: 700;
           color: #4b5875;
         }
 
-        .diskon-row .coret {
-          text-decoration: line-through;
-          color: #8794ab;
-          font-weight: 600;
+        .money-input { position: relative; margin-bottom: 10px; }
+
+        .money-input span {
+          position: absolute;
+          left: 15px;
+          top: 50%;
+          transform: translateY(-50%);
+          font-weight: 800;
+          color: #6b95c4;
         }
 
-        .diskon-row .diskon-value {
-          color: #27ae60;
+        .money-input input {
+          width: 100%;
+          padding: 15px 14px 15px 44px;
+          border: 1.5px solid #dfe7f3;
+          border-radius: 14px;
+          font-size: 20px;
+          font-weight: 800;
+          color: #10295c;
+          outline: none;
+          transition: all .15s;
         }
 
-        .grand-total-box {
+        .money-input input:focus {
+          border-color: #2f80ed;
+          box-shadow: 0 0 0 4px rgba(47, 128, 237, .12);
+        }
+
+        .quick { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+
+        .quick button {
+          padding: 7px 13px;
+          border: 1px solid #dbe6f7;
+          background: #f4f8ff;
+          color: #1c5aa8;
+          border-radius: 999px;
+          font-size: 11px;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all .15s;
+        }
+
+        .quick button:hover { background: #2f80ed; color: #fff; border-color: #2f80ed; }
+
+        .change {
           display: flex;
-          align-items: center;
           justify-content: space-between;
-          padding: 4px 4px 16px;
-          margin-bottom: 6px;
-          font-size: 14.5px;
-          font-weight: 800;
-          color: #10295c;
+          align-items: center;
+          margin-bottom: 14px;
+          padding: 13px 16px;
+          background: #eafaf1;
+          border-radius: 13px;
+          font-size: 12px;
+          color: #3b6b50;
         }
 
-        .grand-total-value {
-          font-size: 19px;
-          font-weight: 800;
-          color: #10295c;
-        }
+        .change strong { font-size: 17px; color: #22a75d; }
 
-        .hint-pilih-metode {
+        .primary {
+          width: 100%;
+          padding: 14px;
+          border: 0;
+          border-radius: 14px;
+          background: linear-gradient(120deg, #2f80ed, #1c67cf);
+          color: #fff;
+          font-size: 13.5px;
+          font-weight: 800;
+          cursor: pointer;
           display: flex;
           align-items: center;
-          gap: 6px;
-          background: #f8fafd;
-          border-radius: 10px;
-          padding: 10px 12px;
+          justify-content: center;
+          gap: 7px;
+          box-shadow: 0 10px 20px rgba(47, 128, 237, .3);
+          transition: all .15s;
+        }
+
+        .primary:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 14px 24px rgba(47, 128, 237, .38); }
+        .primary:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
+
+        .back {
+          width: 100%;
+          margin-top: 8px;
+          padding: 9px;
+          border: 0;
+          background: none;
+          color: #6b7a94;
+          cursor: pointer;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          gap: 5px;
           font-size: 11.5px;
           font-weight: 600;
-          color: #8794ab;
         }
 
+        .back:hover { color: #10295c; }
+
+        .qris .qr-img {
+          position: relative;
+          width: 190px;
+          height: 190px;
+          background: #fff;
+          border: 1px solid #e4ebf6;
+          border-radius: 18px;
+          margin: 4px auto 14px;
+          box-shadow: 0 10px 24px rgba(16, 41, 92, .08);
+        }
+
+        .object { object-fit: contain; padding: 10px; }
+
+        .amount {
+          display: block;
+          text-align: center;
+          background: #f4f7fd;
+          padding: 12px;
+          border-radius: 13px;
+          font-size: 22px;
+          color: #10295c;
+          letter-spacing: -.3px;
+        }
+
+        .waiting {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 7px;
+          background: #eaf3ff;
+          color: #2f80ed;
+          border-radius: 12px;
+          padding: 11px;
+          margin: 11px 0 14px;
+          font-size: 11px;
+          font-weight: 700;
+        }
+
+        .debit-img { height: 150px; position: relative; margin: 6px 0; }
+
+        .wallet-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 0 0 14px; }
+
+        .wallet {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 13px;
+          border: 1.5px solid transparent;
+          border-radius: 14px;
+          background: #f6f8fc;
+          cursor: pointer;
+          font-weight: 800;
+          font-size: 12.5px;
+          transition: all .15s;
+        }
+
+        .wallet:hover { background: #fff; box-shadow: 0 8px 18px rgba(16, 41, 92, .08); }
+        .wallet.on { background: #fff; box-shadow: 0 8px 18px rgba(16, 41, 92, .1); }
+
+        .wallet-ic {
+          width: 28px;
+          height: 28px;
+          border-radius: 9px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        /* BERHASIL */
+        .success-head {
+          padding: 28px 22px 4px;
+          text-align: center;
+        }
+
+        .success-ic {
+          width: 62px;
+          height: 62px;
+          margin: 0 auto 12px;
+          border-radius: 50%;
+          background: linear-gradient(135deg, #34c77b, #22a75d);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          box-shadow: 0 12px 26px rgba(34, 167, 93, .38);
+          animation: pop .4s cubic-bezier(.2, .9, .3, 1.4);
+        }
+
+        .success-head h2 { margin: 0; font-size: 19px; font-weight: 800; color: #10295c; }
+        .success-head p { margin: 4px 0 0; font-size: 11.5px; color: #8794ab; }
+
+        .receipt {
+          margin: 16px 20px 22px;
+          padding: 20px 18px;
+          text-align: center;
+          background: #fbfcfe;
+          border: 1px solid #eaeff7;
+          border-radius: 18px;
+        }
+
+        .receipt-logo {
+          width: 46px;
+          height: 46px;
+          margin: 0 auto 8px;
+          border-radius: 13px;
+          background: #e7f1ff;
+          color: #2f80ed;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .receipt > h2 { margin: 0; color: #10295c; font-size: 17px; letter-spacing: .5px; }
+        .receipt > p { margin: 3px 0; color: #8794ab; font-size: 10.5px; }
+        .receipt > small { color: #9aa6b9; font-size: 9.5px; }
+
+        .receipt-line { border-top: 1px dashed #cfd6e2; margin: 13px 0; }
+
+        .receipt-item {
+          display: flex;
+          justify-content: space-between;
+          gap: 8px;
+          text-align: left;
+          margin: 9px 0;
+          font-size: 10.5px;
+        }
+
+        .receipt-item b { display: block; color: #10295c; }
+        .receipt-item small { display: block; color: #8794ab; margin-top: 3px; }
+
+        .receipt-row {
+          display: flex;
+          justify-content: space-between;
+          text-align: left;
+          margin: 7px 0;
+          font-size: 10.5px;
+          color: #4b5875;
+        }
+
+        .receipt-row b { color: #10295c; }
+
+        .receipt-row.bold {
+          padding: 9px 0;
+          border-top: 1px dashed #d5dce7;
+          border-bottom: 1px dashed #d5dce7;
+          font-weight: bold;
+          color: #10295c;
+        }
+
+        .green { color: #22a75d !important; }
+        .thanks { margin: 14px 0 !important; }
+
+        .print-btn, .new-btn, .done-btn {
+          width: 100%;
+          border: 0;
+          border-radius: 13px;
+          padding: 12px;
+          margin-top: 8px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 7px;
+          font-weight: 800;
+          font-size: 12.5px;
+          cursor: pointer;
+          transition: all .15s;
+        }
+
+        .print-btn { background: #e7f1ff; color: #1c5aa8; }
+        .print-btn:hover { background: #d7e8ff; }
+        .new-btn { background: linear-gradient(120deg, #2f80ed, #1c67cf); color: #fff; box-shadow: 0 8px 18px rgba(47, 128, 237, .28); }
+        .new-btn:hover { transform: translateY(-1px); }
+        .done-btn { background: #f1f4f9; color: #4b5875; }
+        .done-btn:hover { background: #e6ebf3; }
+
+        .spin { animation: spin .8s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
         @media (max-width: 1000px) {
-          .payment-grid {
-            grid-template-columns: 1fr;
-          }
+          .grid { grid-template-columns: 1fr; }
+          .summary { position: static; }
         }
 
         @media (max-width: 620px) {
-          .metode-grid {
-            grid-template-columns: repeat(2, 1fr);
-          }
+          .content { padding: 18px; }
+          .methods { grid-template-columns: 1fr; }
+          .steps { display: none; }
         }
       `}</style>
     </div>
