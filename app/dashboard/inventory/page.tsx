@@ -9,15 +9,14 @@ import {
   Tags,
   Boxes,
   AlertTriangle,
-  Bell,
-  ChevronDown,
   ArrowUpRight,
   PackageX,
   RefreshCw,
-  LayoutDashboard,
   CalendarClock,
+  CalendarDays,
   RotateCcw,
   ArrowLeftRight,
+  LogOut,
 } from "lucide-react";
 
 type Produk = {
@@ -43,190 +42,85 @@ type ModuleData = {
   error: boolean;
 };
 
+const awal: ModuleData = { items: [], loading: true, error: false };
+
+// Halaman tujuan setelah logout dan kunci localStorage yang dihapus
+const HALAMAN_LOGIN = "/login";
+const KUNCI_LOGIN = ["login", "currentUser", "indomart_user"];
+
+// Menu akses cepat
 const menuInventory = [
-  {
-    label: "Produk & Kategori",
-    path: "/inventory/produk",
-    icon: Package,
-    color: "blue",
-  },
-  {
-    label: "Stok Barang",
-    path: "/inventory/stok",
-    icon: Boxes,
-    color: "emerald",
-  },
-  {
-    label: "Stok Minimum",
-    path: "/inventory/stok-minimum",
-    icon: AlertTriangle,
-    color: "amber",
-  },
-  {
-    label: "Barang Expired",
-    path: "/inventory/barang-expired",
-    icon: CalendarClock,
-    color: "red",
-  },
-  {
-    label: "Barang Rusak",
-    path: "/inventory/barang-rusak",
-    icon: PackageX,
-    color: "orange",
-  },
-  {
-    label: "Barang Retur",
-    path: "/inventory/barang-retur",
-    icon: RotateCcw,
-    color: "violet",
-  },
-  {
-    label: "Transfer Stok",
-    path: "/inventory/transfer-stok",
-    icon: ArrowLeftRight,
-    color: "cyan",
-  },
+  { label: "Produk & Kategori", path: "/inventory/produk", icon: Package },
+  { label: "Stok Barang", path: "/inventory/stok", icon: Boxes },
+  { label: "Stok Minimum", path: "/inventory/stok-minimum", icon: AlertTriangle },
+  { label: "Barang Expired", path: "/inventory/barang-expired", icon: CalendarClock },
+  { label: "Barang Rusak", path: "/inventory/barang-rusak", icon: PackageX },
+  { label: "Barang Retur", path: "/inventory/barang-retur", icon: RotateCcw },
+  { label: "Transfer Stok", path: "/inventory/transfer-stok", icon: ArrowLeftRight },
 ];
 
 function getArrayFromResponse(data: any): GenericItem[] {
-  if (Array.isArray(data)) {
-    return data;
-  }
-
-  if (!data || typeof data !== "object") {
-    return [];
-  }
+  if (Array.isArray(data)) return data;
+  if (!data || typeof data !== "object") return [];
 
   const keys = [
-    "data",
-    "items",
-    "rows",
-    "produk",
-    "barang",
-    "result",
-    "results",
-    "records",
-    "stok",
-    "retur",
-    "transfer",
+    "data", "items", "rows", "produk", "barang", "result",
+    "results", "records", "stok", "retur", "transfer",
   ];
 
   for (const key of keys) {
-    if (Array.isArray(data[key])) {
-      return data[key];
-    }
+    if (Array.isArray(data[key])) return data[key];
   }
 
   return [];
 }
 
-function formatNumber(value: number) {
-  return Number(value || 0).toLocaleString("id-ID");
-}
+const formatNumber = (value: number) => Number(value || 0).toLocaleString("id-ID");
 
-function getColorClasses(color: string) {
-  const colors: Record<
-    string,
-    {
-      bg: string;
-      text: string;
-      border: string;
-    }
-  > = {
-    blue: {
-      bg: "bg-blue-50",
-      text: "text-blue-600",
-      border: "border-blue-100",
-    },
-    emerald: {
-      bg: "bg-emerald-50",
-      text: "text-emerald-600",
-      border: "border-emerald-100",
-    },
-    amber: {
-      bg: "bg-amber-50",
-      text: "text-amber-600",
-      border: "border-amber-100",
-    },
-    red: {
-      bg: "bg-red-50",
-      text: "text-red-600",
-      border: "border-red-100",
-    },
-    orange: {
-      bg: "bg-orange-50",
-      text: "text-orange-600",
-      border: "border-orange-100",
-    },
-    violet: {
-      bg: "bg-violet-50",
-      text: "text-violet-600",
-      border: "border-violet-100",
-    },
-    cyan: {
-      bg: "bg-cyan-50",
-      text: "text-cyan-600",
-      border: "border-cyan-100",
-    },
-  };
-
-  return colors[color] || colors.blue;
-}
+const Garis = ({ className = "" }: { className?: string }) => (
+  <div className={`flex h-1.5 ${className}`}>
+    <span className="flex-1 bg-blue-600" />
+    <span className="flex-1 bg-red-600" />
+    <span className="flex-1 bg-yellow-400" />
+  </div>
+);
 
 export default function DashboardInventoryPage() {
   const router = useRouter();
 
   const [produk, setProduk] = useState<Produk[]>([]);
   const [kategori, setKategori] = useState<Kategori[]>([]);
-
-  const [stokMinimumData, setStokMinimumData] =
-    useState<ModuleData>({
-      items: [],
-      loading: true,
-      error: false,
-    });
-
-  const [expiredData, setExpiredData] =
-    useState<ModuleData>({
-      items: [],
-      loading: true,
-      error: false,
-    });
-
-  const [rusakData, setRusakData] =
-    useState<ModuleData>({
-      items: [],
-      loading: true,
-      error: false,
-    });
-
-  const [returData, setReturData] =
-    useState<ModuleData>({
-      items: [],
-      loading: true,
-      error: false,
-    });
-
-  const [transferData, setTransferData] =
-    useState<ModuleData>({
-      items: [],
-      loading: true,
-      error: false,
-    });
-
   const [loadingProduk, setLoadingProduk] = useState(true);
+  const [memuat, setMemuat] = useState(true);
+  const [tanggal, setTanggal] = useState("");
+  const [namaUser, setNamaUser] = useState("Admin");
+
+  const [konfirmasi, setKonfirmasi] = useState(false);
+  const [keluarLoading, setKeluarLoading] = useState(false);
+
+  const [stokMinimumData, setStokMinimumData] = useState<ModuleData>(awal);
+  const [expiredData, setExpiredData] = useState<ModuleData>(awal);
+  const [rusakData, setRusakData] = useState<ModuleData>(awal);
+  const [returData, setReturData] = useState<ModuleData>(awal);
+  const [transferData, setTransferData] = useState<ModuleData>(awal);
 
   const loadData = async () => {
+    setMemuat(true);
     setLoadingProduk(true);
 
-    try {
-      const response = await fetch(
-        "/api/inventory/produk",
-        {
-          cache: "no-store",
-        }
-      );
+    const modules = [
+      { url: "/api/inventory/stok-minimum", setter: setStokMinimumData },
+      { url: "/api/inventory/barang-expired", setter: setExpiredData },
+      { url: "/api/barang-rusak?search=&status=Semua&tanggal=", setter: setRusakData },
+      { url: "/api/inventory/barang-retur", setter: setReturData },
+      { url: "/api/transfer-stok", setter: setTransferData },
+    ];
 
+    modules.forEach((m) => m.setter((prev) => ({ ...prev, loading: true })));
+
+    // Data produk & kategori
+    try {
+      const response = await fetch("/api/inventory/produk", { cache: "no-store" });
       const data = await response.json();
 
       if (response.ok) {
@@ -237,612 +131,390 @@ export default function DashboardInventoryPage() {
         setKategori([]);
       }
     } catch (error) {
-      console.error(
-        "Gagal mengambil data produk:",
-        error
-      );
-
+      console.error("Gagal mengambil data produk:", error);
       setProduk([]);
       setKategori([]);
     } finally {
       setLoadingProduk(false);
     }
 
-    const modules = [
-      {
-        url: "/api/inventory/stok-minimum",
-        setter: setStokMinimumData,
-      },
-      {
-        url: "/api/inventory/barang-expired",
-        setter: setExpiredData,
-      },
-      {
-        url: "/api/barang-rusak?search=&status=Semua&tanggal=",
-        setter: setRusakData,
-      },
-      {
-        url: "/api/inventory/barang-retur",
-        setter: setReturData,
-      },
-      {
-        url: "/api/transfer-stok",
-        setter: setTransferData,
-      },
-    ];
-
+    // Data modul lainnya
     await Promise.all(
       modules.map(async (module) => {
         try {
-          const response = await fetch(
-            module.url,
-            {
-              cache: "no-store",
-            }
-          );
+          const response = await fetch(module.url, { cache: "no-store" });
 
           if (!response.ok) {
-            module.setter({
-              items: [],
-              loading: false,
-              error: true,
-            });
-
+            module.setter({ items: [], loading: false, error: true });
             return;
           }
 
           const data = await response.json();
-
           module.setter({
             items: getArrayFromResponse(data),
             loading: false,
             error: false,
           });
         } catch (error) {
-          console.error(
-            `Gagal mengambil ${module.url}`,
-            error
-          );
-
-          module.setter({
-            items: [],
-            loading: false,
-            error: true,
-          });
+          console.error(`Gagal mengambil ${module.url}`, error);
+          module.setter({ items: [], loading: false, error: true });
         }
       })
     );
+
+    setMemuat(false);
   };
 
   useEffect(() => {
     const login = localStorage.getItem("login");
 
-    if (
-      login !== "inventory" &&
-      login !== "admin"
-    ) {
+    if (login !== "inventory" && login !== "admin") {
       router.push("/login");
       return;
     }
 
-    loadData();
-  }, [router]);
+    // Nama pengguna (jika tersimpan), bila tidak tetap "Admin"
+    try {
+      const user = JSON.parse(
+        localStorage.getItem("currentUser") || localStorage.getItem("indomart_user") || "null"
+      );
+      if (user?.nama) setNamaUser(user.nama);
+      else if (user?.name) setNamaUser(user.name);
+    } catch {
+      // biarkan default
+    }
 
-  const totalStok = produk.reduce(
-    (total, item) =>
-      total + Number(item.stok || 0),
-    0
-  );
-
-  const stokAman = produk.filter(
-    (item) => Number(item.stok) > 20
-  );
-
-  const hasNotification =
-    stokMinimumData.items.length > 0 ||
-    expiredData.items.length > 0 ||
-    produk.some(
-      (item) => Number(item.stok) <= 20
+    setTanggal(
+      new Date().toLocaleDateString("id-ID", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      })
     );
 
+    loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router]);
+
+  // Tutup dialog logout dengan Escape (kecuali sedang diproses)
+  useEffect(() => {
+    if (!konfirmasi) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !keluarLoading && setKonfirmasi(false);
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [konfirmasi, keluarLoading]);
+
+  async function logout() {
+    setKeluarLoading(true);
+    try {
+      // Hapus sesi di server (cookie) jika endpoint tersedia; kegagalan tidak menghentikan logout
+      await fetch("/api/logout", { method: "POST" });
+    } catch (e) {
+      console.error("Logout server gagal:", e);
+    }
+    KUNCI_LOGIN.forEach((k) => localStorage.removeItem(k));
+    router.replace(HALAMAN_LOGIN);
+  }
+
+  const totalStok = produk.reduce((total, item) => total + Number(item.stok || 0), 0);
+  const stokAman = produk.filter((item) => Number(item.stok) > 20).length;
+  const persenAman = produk.length ? Math.round((stokAman / produk.length) * 100) : 0;
+
+  // Kartu "perlu perhatian"
+  const perhatian = [
+    {
+      label: "Stok minimum",
+      hint: "Di bawah batas minimum",
+      path: "/inventory/stok-minimum",
+      icon: AlertTriangle,
+      tile: "bg-yellow-400 text-blue-900 shadow-yellow-100",
+      chip: "bg-yellow-100 text-yellow-800",
+      warn: true,
+      data: stokMinimumData,
+    },
+    {
+      label: "Barang expired",
+      hint: "Barang kedaluwarsa",
+      path: "/inventory/barang-expired",
+      icon: CalendarClock,
+      tile: "bg-red-600 text-white shadow-red-100",
+      chip: "bg-red-50 text-red-600",
+      warn: true,
+      data: expiredData,
+    },
+    {
+      label: "Barang rusak",
+      hint: "Barang tidak layak jual",
+      path: "/inventory/barang-rusak",
+      icon: PackageX,
+      tile: "bg-red-600 text-white shadow-red-100",
+      chip: "bg-red-50 text-red-600",
+      warn: true,
+      data: rusakData,
+    },
+    {
+      label: "Barang retur",
+      hint: "Pengembalian barang",
+      path: "/inventory/barang-retur",
+      icon: RotateCcw,
+      tile: "bg-yellow-400 text-blue-900 shadow-yellow-100",
+      chip: "bg-yellow-100 text-yellow-800",
+      warn: false,
+      data: returData,
+    },
+    {
+      label: "Transfer stok",
+      hint: "Perpindahan stok",
+      path: "/inventory/transfer-stok",
+      icon: ArrowLeftRight,
+      tile: "bg-blue-700 text-white shadow-blue-100",
+      chip: "bg-blue-50 text-blue-700",
+      warn: false,
+      data: transferData,
+    },
+  ];
+
+  const ringkasan = [
+    { label: "Total produk", nilai: produk.length, icon: Package },
+    { label: "Total kategori", nilai: kategori.length, icon: Tags },
+    { label: "Total stok", nilai: totalStok, icon: Boxes },
+    { label: "Stok aman", nilai: stokAman, icon: Boxes },
+  ];
+
   return (
-    <div className="min-h-screen overflow-x-hidden bg-[#f5f8fc] text-slate-800">
-      <style jsx global>{`
-        @keyframes dashboardFade {
-          from {
-            opacity: 0;
-            transform: translateY(8px);
-          }
-
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-
-        .dashboard-fade {
-          animation: dashboardFade 0.45s ease-out;
-        }
+    <div className="flex min-h-screen overflow-x-clip bg-white text-slate-800">
+      <style>{`
+        @keyframes naikMuncul { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+        @keyframes melayang { 0%, 100% { transform: translateY(0) rotate(-6deg); } 50% { transform: translateY(-8px) rotate(-3deg); } }
+        @keyframes munculModal { from { opacity: 0; transform: translateY(12px) scale(.98); } to { opacity: 1; transform: none; } }
+        .a-naik { animation: naikMuncul .5s cubic-bezier(.22,1,.36,1) both; }
+        .a-melayang { animation: melayang 5s ease-in-out infinite; }
+        .a-modal { animation: munculModal .22s ease-out; }
+        @media (prefers-reduced-motion: reduce) { .a-naik, .a-melayang, .a-modal { animation: none; } }
       `}</style>
 
       {/* SIDEBAR */}
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-[235px] lg:block">
+      <aside className="hidden w-[235px] shrink-0 self-stretch border-r border-slate-200 bg-white lg:block [&>*]:!static [&>*]:!border-r-0 [&_.fixed]:!static [&_.sticky]:!static">
         <SidebarInventory />
       </aside>
 
-      <main className="min-h-screen w-full lg:ml-[235px] lg:w-[calc(100%-235px)]">
+      <main className="min-w-0 flex-1">
+        {/* ================= HEADER ================= */}
+        <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur-xl">
+          <Garis className="!h-1" />
 
-        {/* TOPBAR */}
-        <header className="sticky top-0 z-30 h-[72px] border-b border-slate-100 bg-white/95 backdrop-blur-xl">
-          <div className="flex h-full items-center justify-end gap-4 px-5 lg:px-7">
+          <div className="flex h-16 items-center justify-between gap-4 px-5 lg:px-8">
+            {/* Kiri: tanggal */}
+            <div className="flex items-center gap-2.5 text-sm text-slate-500">
+              <CalendarDays size={17} className="text-blue-700" />
+              <span className="hidden sm:inline">{tanggal || " "}</span>
+              <span className="font-semibold text-blue-900 sm:hidden">Inventory</span>
+            </div>
 
-            {/* REFRESH */}
-            <button
-              type="button"
-              onClick={loadData}
-              className="flex h-10 w-10 items-center justify-center rounded-full text-slate-500 transition hover:bg-blue-50 hover:text-blue-600"
-              title="Refresh"
-            >
-              <RefreshCw
-                size={18}
-                className={
-                  loadingProduk
-                    ? "animate-spin"
-                    : ""
-                }
-              />
-            </button>
+            {/* Kanan: refresh + profil + logout */}
+            <div className="flex items-center gap-4">
+              <button
+                type="button"
+                onClick={loadData}
+                disabled={memuat}
+                className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 disabled:opacity-60"
+              >
+                <RefreshCw size={16} className={memuat ? "animate-spin" : ""} />
+                <span className="hidden sm:inline">{memuat ? "Memuat..." : "Segarkan"}</span>
+              </button>
 
-            {/* NOTIFICATION */}
-            <button
-              type="button"
-              className="relative flex h-10 w-10 items-center justify-center rounded-full text-slate-500 transition hover:bg-blue-50 hover:text-blue-600"
-            >
-              <Bell size={19} />
+              <div className="hidden h-8 w-px bg-slate-200 sm:block" />
 
-              {hasNotification && (
-                <span className="absolute right-[7px] top-[6px] h-2 w-2 rounded-full border-2 border-white bg-red-500" />
-              )}
-            </button>
-
-            <div className="hidden h-9 w-px bg-slate-100 sm:block" />
-
-            {/* PROFILE */}
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-50">
-                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-600 text-white">
-                  <span className="text-xs font-bold">
-                    A
-                  </span>
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-700 text-sm font-bold text-white ring-2 ring-yellow-400 ring-offset-2">
+                  {namaUser.charAt(0).toUpperCase()}
                 </div>
+                <div className="hidden leading-tight sm:block">
+                  <p className="text-sm font-bold text-blue-900">{namaUser}</p>
+                  <p className="text-xs text-slate-400">Inventory</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setKonfirmasi(true)}
+                  title="Keluar"
+                  aria-label="Keluar"
+                  className="flex h-10 w-10 items-center justify-center rounded-xl text-red-600 transition hover:bg-red-50 focus:outline-none focus:ring-4 focus:ring-red-100"
+                >
+                  <LogOut size={18} />
+                </button>
               </div>
-
-              <div className="hidden text-left sm:block">
-                <p className="text-xs font-bold text-[#102b66]">
-                  Admin
-                </p>
-
-                <p className="mt-0.5 text-[11px] text-slate-400">
-                  Inventory
-                </p>
-              </div>
-
-              <ChevronDown
-                size={15}
-                className="text-slate-500"
-              />
             </div>
           </div>
         </header>
 
-        <div className="dashboard-fade mx-auto max-w-[1400px] px-4 py-6 sm:px-6 lg:px-7">
+        <div className="mx-auto max-w-[1400px] space-y-8 px-4 py-8 sm:px-6 lg:px-8">
+          {/* ================= HERO + RINGKASAN ================= */}
+          <section className="a-naik relative overflow-hidden rounded-3xl bg-gradient-to-br from-blue-900 via-blue-800 to-blue-700 px-7 py-8 text-white shadow-xl shadow-blue-100">
+            <div className="pointer-events-none absolute -right-16 -top-20 h-64 w-64 rounded-full bg-yellow-400/20" />
+            <div className="pointer-events-none absolute -bottom-24 right-40 h-56 w-56 rounded-full bg-red-500/20" />
+            <Boxes className="a-melayang pointer-events-none absolute bottom-6 right-8 hidden h-28 w-28 text-white/15 sm:block" />
 
-          {/* TITLE */}
-          <div className="mb-6 flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-100">
-              <LayoutDashboard size={20} />
-            </div>
-
-            <div>
-              <h1 className="text-[27px] font-extrabold tracking-[-0.7px] text-[#102b66]">
-                Dashboard Inventory
-              </h1>
-
-              <p className="mt-0.5 text-sm text-[#6b7fa6]">
-                Ringkasan seluruh aktivitas dan data inventory.
+            <div className="relative">
+              <h1 className="text-3xl font-bold tracking-tight md:text-4xl">Dashboard Inventory</h1>
+              <p className="mt-2 max-w-lg text-sm leading-relaxed text-blue-100">
+                Ringkasan seluruh aktivitas dan data inventory Indomart.
               </p>
+
+              {/* Angka ringkasan */}
+              <div className="mt-7 grid grid-cols-2 gap-3 lg:grid-cols-4">
+                {ringkasan.map(({ label, nilai, icon: Icon }) => (
+                  <div
+                    key={label}
+                    className="rounded-2xl border border-white/15 bg-white/10 p-4 backdrop-blur"
+                  >
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm text-blue-100">{label}</p>
+                      <Icon size={17} className="text-yellow-300" />
+                    </div>
+                    <p className="mt-2 text-3xl font-bold tracking-tight">
+                      {loadingProduk ? "..." : formatNumber(nilai)}
+                    </p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Kesehatan stok */}
+              <div className="mt-6">
+                <div className="mb-2 flex items-center justify-between text-xs text-blue-100">
+                  <span>Produk dengan stok aman (di atas 20 unit)</span>
+                  <span className="font-semibold text-white">{loadingProduk ? "..." : `${persenAman}%`}</span>
+                </div>
+                <div className="h-2 overflow-hidden rounded-full bg-white/15">
+                  <div
+                    className="h-full rounded-full bg-yellow-400 transition-all duration-700"
+                    style={{ width: `${loadingProduk ? 0 : persenAman}%` }}
+                  />
+                </div>
+              </div>
             </div>
-          </div>
+          </section>
 
-          {/* MENU INVENTORY */}
-          <section className="mb-6">
-            <div className="mb-4">
-              <h2 className="text-[18px] font-extrabold text-[#102b66]">
-                Menu Inventory
-              </h2>
-
-              <p className="mt-1 text-[11px] text-slate-400">
-                Akses seluruh pengelolaan inventory.
-              </p>
+          {/* ================= PERLU PERHATIAN ================= */}
+          <section>
+            <div className="a-naik mb-4" style={{ animationDelay: "120ms" }}>
+              <h2 className="text-xl font-bold text-blue-900">Perlu perhatian</h2>
+              <p className="mt-0.5 text-sm text-slate-400">Pantau barang yang membutuhkan tindakan.</p>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
-              {menuInventory.map((menu) => {
-                const Icon = menu.icon;
-                const color = getColorClasses(
-                  menu.color
-                );
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+              {perhatian.map((k, i) => {
+                const Icon = k.icon;
+                const jumlah = k.data.items.length;
+                const perluCek = k.warn && !k.data.loading && !k.data.error && jumlah > 0;
 
                 return (
                   <button
-                    key={menu.path}
+                    key={k.path}
                     type="button"
-                    onClick={() =>
-                      router.push(menu.path)
-                    }
-                    className="group flex min-h-[78px] items-center gap-3 rounded-2xl border border-slate-100 bg-white p-4 text-left shadow-[0_5px_20px_rgba(36,72,130,0.05)] transition-all duration-300 hover:-translate-y-1 hover:border-blue-100 hover:shadow-[0_12px_30px_rgba(36,72,130,0.10)]"
+                    onClick={() => router.push(k.path)}
+                    style={{ animationDelay: `${180 + i * 80}ms` }}
+                    className="a-naik group flex flex-col rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-[0_4px_20px_rgba(15,23,42,0.05)] transition hover:-translate-y-1 hover:border-blue-200 hover:shadow-[0_12px_30px_rgba(30,64,175,0.10)] focus:outline-none focus:ring-4 focus:ring-blue-100"
                   >
-                    <span
-                      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${color.bg} ${color.text} transition-all duration-300 group-hover:bg-blue-600 group-hover:text-white`}
-                    >
-                      <Icon size={19} />
-                    </span>
+                    <div className="flex items-start justify-between">
+                      <div className={`flex h-11 w-11 items-center justify-center rounded-2xl shadow-md ${k.tile}`}>
+                        <Icon size={20} />
+                      </div>
+                      <ArrowUpRight size={17} className="text-slate-300 transition group-hover:text-blue-700" />
+                    </div>
 
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[11px] font-bold text-[#405a88]">
-                        {menu.label}
-                      </span>
+                    <p className="mt-5 text-sm font-semibold text-slate-600">{k.label}</p>
 
-                      <span className="mt-1 flex items-center gap-1 text-[9px] text-slate-400">
-                        Buka halaman
-                        <ArrowUpRight size={10} />
-                      </span>
-                    </span>
+                    <p className="mt-1 text-3xl font-bold tracking-tight text-blue-900">
+                      {k.data.loading ? "..." : k.data.error ? "-" : formatNumber(jumlah)}
+                    </p>
+
+                    <div className="mt-2 flex items-center gap-2">
+                      <p className="text-xs text-slate-400">{k.hint}</p>
+                      {perluCek && (
+                        <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${k.chip}`}>
+                          Perlu dicek
+                        </span>
+                      )}
+                    </div>
                   </button>
                 );
               })}
             </div>
           </section>
 
-          {/* RINGKASAN INVENTORY */}
-          <section className="overflow-hidden rounded-[24px] border border-slate-100 bg-white shadow-[0_8px_30px_rgba(36,72,130,0.06)]">
-
-            {/* HEADER */}
-            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-5 sm:px-6">
-              <div>
-                <h2 className="text-[20px] font-extrabold tracking-[-0.3px] text-[#102b66]">
-                  Ringkasan Inventory
-                </h2>
-
-                <p className="mt-1 text-[11px] text-[#8193b5]">
-                  Data inventory yang diambil langsung dari sistem.
-                </p>
-              </div>
-
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
-                <Boxes size={20} />
-              </div>
+          {/* ================= MENU INVENTORY ================= */}
+          <section>
+            <div className="a-naik mb-4" style={{ animationDelay: "520ms" }}>
+              <h2 className="text-xl font-bold text-blue-900">Menu inventory</h2>
+              <p className="mt-0.5 text-sm text-slate-400">Akses seluruh pengelolaan inventory.</p>
             </div>
 
-            {/* CARDS */}
-            <div className="grid grid-cols-1 gap-3 p-5 sm:grid-cols-2 xl:grid-cols-4">
-
-              {/* TOTAL PRODUK */}
-              <div className="group rounded-2xl border border-blue-100 bg-blue-50/40 p-4 transition hover:-translate-y-1 hover:shadow-md">
-                <div className="flex items-center justify-between">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100 text-blue-600">
-                    <Package size={19} />
-                  </div>
-
-                  <ArrowUpRight
-                    size={15}
-                    className="text-blue-400 transition group-hover:text-blue-600"
-                  />
-                </div>
-
-                <p className="mt-5 text-[11px] font-bold text-[#405a88]">
-                  Total Produk
-                </p>
-
-                <p className="mt-1 text-[27px] font-extrabold text-[#102b66]">
-                  {loadingProduk
-                    ? "..."
-                    : formatNumber(
-                        produk.length
-                      )}
-                </p>
-
-                <p className="mt-1 text-[10px] text-slate-400">
-                  Produk terdaftar
-                </p>
-              </div>
-
-              {/* TOTAL KATEGORI */}
-              <div className="group rounded-2xl border border-violet-100 bg-violet-50/40 p-4 transition hover:-translate-y-1 hover:shadow-md">
-                <div className="flex items-center justify-between">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-100 text-violet-600">
-                    <Tags size={19} />
-                  </div>
-
-                  <ArrowUpRight
-                    size={15}
-                    className="text-violet-400 transition group-hover:text-violet-600"
-                  />
-                </div>
-
-                <p className="mt-5 text-[11px] font-bold text-[#405a88]">
-                  Total Kategori
-                </p>
-
-                <p className="mt-1 text-[27px] font-extrabold text-[#102b66]">
-                  {loadingProduk
-                    ? "..."
-                    : formatNumber(
-                        kategori.length
-                      )}
-                </p>
-
-                <p className="mt-1 text-[10px] text-slate-400">
-                  Kategori produk
-                </p>
-              </div>
-
-              {/* TOTAL STOK */}
-              <div className="group rounded-2xl border border-emerald-100 bg-emerald-50/40 p-4 transition hover:-translate-y-1 hover:shadow-md">
-                <div className="flex items-center justify-between">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600">
-                    <Boxes size={19} />
-                  </div>
-
-                  <ArrowUpRight
-                    size={15}
-                    className="text-emerald-400 transition group-hover:text-emerald-600"
-                  />
-                </div>
-
-                <p className="mt-5 text-[11px] font-bold text-[#405a88]">
-                  Total Stok
-                </p>
-
-                <p className="mt-1 text-[27px] font-extrabold text-[#102b66]">
-                  {loadingProduk
-                    ? "..."
-                    : formatNumber(
-                        totalStok
-                      )}
-                </p>
-
-                <p className="mt-1 text-[10px] text-slate-400">
-                  Semua unit produk
-                </p>
-              </div>
-
-              {/* STOK AMAN */}
-              <div className="group rounded-2xl border border-emerald-100 bg-emerald-50/40 p-4 transition hover:-translate-y-1 hover:shadow-md">
-                <div className="flex items-center justify-between">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600">
-                    <Boxes size={19} />
-                  </div>
-
-                  <ArrowUpRight
-                    size={15}
-                    className="text-emerald-400 transition group-hover:text-emerald-600"
-                  />
-                </div>
-
-                <p className="mt-5 text-[11px] font-bold text-emerald-700">
-                  Stok Aman
-                </p>
-
-                <p className="mt-1 text-[27px] font-extrabold text-[#102b66]">
-                  {loadingProduk
-                    ? "..."
-                    : formatNumber(
-                        stokAman.length
-                      )}
-                </p>
-
-                <p className="mt-1 text-[10px] text-emerald-600">
-                  Stok di atas 20 unit
-                </p>
-              </div>
-
-              {/* STOK MINIMUM */}
-              <button
-                type="button"
-                onClick={() =>
-                  router.push(
-                    "/inventory/stok-minimum"
-                  )
-                }
-                className="group rounded-2xl border border-amber-100 bg-amber-50/40 p-4 text-left transition hover:-translate-y-1 hover:shadow-md"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 text-amber-600">
-                    <AlertTriangle size={19} />
-                  </div>
-
-                  <ArrowUpRight
-                    size={15}
-                    className="text-amber-400"
-                  />
-                </div>
-
-                <p className="mt-5 text-[11px] font-bold text-amber-700">
-                  Stok Minimum
-                </p>
-
-                <p className="mt-1 text-[27px] font-extrabold text-[#102b66]">
-                  {stokMinimumData.error
-                    ? "-"
-                    : formatNumber(
-                        stokMinimumData.items.length
-                      )}
-                </p>
-
-                <p className="mt-1 text-[10px] text-amber-600">
-                  Di bawah batas minimum
-                </p>
-              </button>
-
-              {/* BARANG EXPIRED */}
-              <button
-                type="button"
-                onClick={() =>
-                  router.push(
-                    "/inventory/barang-expired"
-                  )
-                }
-                className="group rounded-2xl border border-red-100 bg-red-50/40 p-4 text-left transition hover:-translate-y-1 hover:shadow-md"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-red-100 text-red-600">
-                    <CalendarClock size={19} />
-                  </div>
-
-                  <ArrowUpRight
-                    size={15}
-                    className="text-red-400"
-                  />
-                </div>
-
-                <p className="mt-5 text-[11px] font-bold text-red-700">
-                  Barang Expired
-                </p>
-
-                <p className="mt-1 text-[27px] font-extrabold text-[#102b66]">
-                  {expiredData.error
-                    ? "-"
-                    : formatNumber(
-                        expiredData.items.length
-                      )}
-                </p>
-
-                <p className="mt-1 text-[10px] text-red-600">
-                  Data barang kedaluwarsa
-                </p>
-              </button>
-
-              {/* BARANG RUSAK */}
-              <button
-                type="button"
-                onClick={() =>
-                  router.push(
-                    "/inventory/barang-rusak"
-                  )
-                }
-                className="group rounded-2xl border border-orange-100 bg-orange-50/40 p-4 text-left transition hover:-translate-y-1 hover:shadow-md"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-100 text-orange-600">
-                    <PackageX size={19} />
-                  </div>
-
-                  <ArrowUpRight
-                    size={15}
-                    className="text-orange-400"
-                  />
-                </div>
-
-                <p className="mt-5 text-[11px] font-bold text-orange-700">
-                  Barang Rusak
-                </p>
-
-                <p className="mt-1 text-[27px] font-extrabold text-[#102b66]">
-                  {rusakData.error
-                    ? "-"
-                    : formatNumber(
-                        rusakData.items.length
-                      )}
-                </p>
-
-                <p className="mt-1 text-[10px] text-orange-600">
-                  Data barang rusak
-                </p>
-              </button>
-
-              {/* BARANG RETUR */}
-              <button
-                type="button"
-                onClick={() =>
-                  router.push(
-                    "/inventory/barang-retur"
-                  )
-                }
-                className="group rounded-2xl border border-violet-100 bg-violet-50/40 p-4 text-left transition hover:-translate-y-1 hover:shadow-md"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-100 text-violet-600">
-                    <RotateCcw size={19} />
-                  </div>
-
-                  <ArrowUpRight
-                    size={15}
-                    className="text-violet-400"
-                  />
-                </div>
-
-                <p className="mt-5 text-[11px] font-bold text-violet-700">
-                  Barang Retur
-                </p>
-
-                <p className="mt-1 text-[27px] font-extrabold text-[#102b66]">
-                  {returData.error
-                    ? "-"
-                    : formatNumber(
-                        returData.items.length
-                      )}
-                </p>
-
-                <p className="mt-1 text-[10px] text-violet-600">
-                  Data retur barang
-                </p>
-              </button>
-
-              {/* TRANSFER STOK */}
-              <button
-                type="button"
-                onClick={() =>
-                  router.push(
-                    "/inventory/transfer-stok"
-                  )
-                }
-                className="group rounded-2xl border border-cyan-100 bg-cyan-50/40 p-4 text-left transition hover:-translate-y-1 hover:shadow-md"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-100 text-cyan-600">
-                    <ArrowLeftRight size={19} />
-                  </div>
-
-                  <ArrowUpRight
-                    size={15}
-                    className="text-cyan-400"
-                  />
-                </div>
-
-                <p className="mt-5 text-[11px] font-bold text-cyan-700">
-                  Transfer Stok
-                </p>
-
-                <p className="mt-1 text-[27px] font-extrabold text-[#102b66]">
-                  {transferData.error
-                    ? "-"
-                    : formatNumber(
-                        transferData.items.length
-                      )}
-                </p>
-
-                <p className="mt-1 text-[10px] text-cyan-600">
-                  Perpindahan stok
-                </p>
-              </button>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+              {menuInventory.map(({ label, path, icon: Icon }, i) => (
+                <button
+                  key={path}
+                  type="button"
+                  onClick={() => router.push(path)}
+                  style={{ animationDelay: `${580 + i * 60}ms` }}
+                  className="a-naik group flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-left transition hover:border-blue-300 hover:bg-blue-50/50 focus:outline-none focus:ring-4 focus:ring-blue-100"
+                >
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700 transition group-hover:bg-blue-700 group-hover:text-white">
+                    <Icon size={20} />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold text-slate-700">{label}</span>
+                    <span className="mt-0.5 flex items-center gap-1 text-xs text-slate-400">
+                      Buka halaman
+                      <ArrowUpRight size={12} />
+                    </span>
+                  </span>
+                </button>
+              ))}
             </div>
           </section>
-
-          {/* SPACING */}
-          <div className="h-6" />
         </div>
       </main>
+
+      {/* ================= DIALOG LOGOUT (di luar header agar tidak terkurung backdrop-blur) ================= */}
+      {konfirmasi && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-blue-950/40 p-4 backdrop-blur-[2px]"
+          onMouseDown={(e) => e.target === e.currentTarget && !keluarLoading && setKonfirmasi(false)}
+        >
+          <div role="dialog" aria-modal="true" aria-labelledby="judul-logout" className="a-modal w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <Garis />
+            <div className="p-6">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-red-50 text-red-600">
+                <LogOut size={26} />
+              </div>
+              <h2 id="judul-logout" className="mt-4 text-xl font-bold text-blue-900">Keluar dari akun?</h2>
+              <p className="mt-1.5 text-sm leading-relaxed text-slate-500">
+                Anda akan keluar dari dashboard inventory dan perlu login lagi untuk melanjutkan.
+              </p>
+
+              <div className="mt-6 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setKonfirmasi(false)}
+                  disabled={keluarLoading}
+                  className="rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-500 transition hover:bg-slate-100 disabled:opacity-50"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={logout}
+                  disabled={keluarLoading}
+                  className="flex items-center gap-2 rounded-xl bg-red-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-red-100 transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <LogOut size={15} /> {keluarLoading ? "Keluar..." : "Ya, keluar"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

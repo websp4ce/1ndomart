@@ -10,9 +10,16 @@ import {
   Warehouse,
   BarChart3,
   ArrowLeft,
+  Truck,
+  PackageSearch,
+  PackageCheck,
+  Send,
+  ArrowLeftRight,
+  MapPin,
 } from "lucide-react";
 
 const navItems = [
+  // MENU WAREHOUSE UTAMA
   {
     label: "Dashboard Warehouse",
     href: "/dashboard/warehouse",
@@ -27,6 +34,43 @@ const navItems = [
     label: "Pengelolaan Gudang",
     href: "/warehouse/pengelolaan",
     icon: Warehouse,
+  },
+
+  // FITUR TEMAN
+  {
+    label: "Data Gudang",
+    href: "/warehouse/data-gudang",
+    icon: Warehouse,
+  },
+  {
+    label: "Data Supplier",
+    href: "/warehouse/data-supplier",
+    icon: Truck,
+  },
+  {
+    label: "Picking",
+    href: "/warehouse/picking",
+    icon: PackageSearch,
+  },
+  {
+    label: "Packing",
+    href: "/warehouse/packing",
+    icon: PackageCheck,
+  },
+  {
+    label: "Pengiriman Barang",
+    href: "/warehouse/pengiriman",
+    icon: Send,
+  },
+  {
+    label: "Transfer Antar Gudang",
+    href: "/warehouse/transfer-gudang",
+    icon: ArrowLeftRight,
+  },
+  {
+    label: "Lokasi Rak",
+    href: "/warehouse/lokasi-rak",
+    icon: MapPin,
   },
   {
     label: "Laporan Warehouse",
@@ -48,6 +92,7 @@ export default function SidebarWarehouse() {
             alt="Indomart"
             fill
             priority
+            sizes="(min-width: 768px) 180px, 48px"
             className="object-contain md:object-left"
           />
         </div>
@@ -66,7 +111,7 @@ export default function SidebarWarehouse() {
             const active =
               pathname === item.href ||
               (item.href !== "/dashboard/warehouse" &&
-                pathname.startsWith(item.href));
+                pathname.startsWith(`${item.href}/`));
 
             return (
               <Link

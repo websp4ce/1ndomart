@@ -5,38 +5,14 @@ import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import SidebarKasir from '../components/SidebarKasir';
 import {
-  Store,
-  Bell,
-  User,
-  ChevronDown,
-  Wallet,
-  Banknote,
-  QrCode,
-  CreditCard,
-  ShoppingBag,
-  Percent,
-  ArrowLeft,
-  ArrowRight,
-  CheckCircle2,
-  Printer,
-  RefreshCw,
-  X,
-  Loader2,
-  Tag,
+  Store, Bell, User, ChevronDown, Wallet, Banknote, QrCode,
+  CreditCard, ShoppingBag, Percent, ArrowLeft, ArrowRight,
+  CheckCircle2, Printer, RefreshCw, X, Loader2, Tag
 } from 'lucide-react';
 
 type MetodeId = 'tunai' | 'qris' | 'debit' | 'ewallet';
 
-type Metode = {
-  id: MetodeId;
-  nama: string;
-  Icon: typeof Wallet;
-  cardBg: string;
-  iconBg: string;
-  textColor: string;
-};
-
-type ItemBelanja = {
+type Item = {
   id: string;
   nama: string;
   harga: number;
@@ -45,409 +21,209 @@ type ItemBelanja = {
 };
 
 type Promo = {
-  id?: string | number;
   nama?: string;
-  tipe?: string;
   persen?: number;
   diskon?: number;
 };
 
-type TransaksiAktif = {
-  items?: ItemBelanja[];
-  keranjang?: ItemBelanja[];
+type Transaksi = {
+  items?: Item[];
+  keranjang?: Item[];
   promo?: Promo | null;
   promoTerpilih?: Promo | null;
   selectedPromo?: Promo | null;
   diskon?: number;
-  member?: {
-    id?: string | number;
-    nama?: string;
-  } | null;
 };
 
-type TahapPembayaran = 'pilih' | 'proses' | 'berhasil';
-
-type DetailBerhasil = {
+type Detail = {
   metode: string;
   totalBayar: number;
   kembalian: number;
 };
 
-const metodeList: Metode[] = [
-  {
-    id: 'tunai',
-    nama: 'Tunai',
-    Icon: Banknote,
-    cardBg: '#eafaf1',
-    iconBg: '#27ae60',
-    textColor: '#1e7a45',
-  },
-  {
-    id: 'qris',
-    nama: 'QRIS',
-    Icon: QrCode,
-    cardBg: '#eaf3ff',
-    iconBg: '#2f80ed',
-    textColor: '#1c5aa8',
-  },
-  {
-    id: 'debit',
-    nama: 'Debit',
-    Icon: CreditCard,
-    cardBg: '#fff2e5',
-    iconBg: '#f5a742',
-    textColor: '#a15c12',
-  },
-  {
-    id: 'ewallet',
-    nama: 'E-Wallet',
-    Icon: Wallet,
-    cardBg: '#f3edff',
-    iconBg: '#8a5cf6',
-    textColor: '#5b3aa8',
-  },
+const metode = [
+  { id: 'tunai' as const, nama: 'Tunai', Icon: Banknote, bg: '#eafaf1', color: '#27ae60' },
+  { id: 'qris' as const, nama: 'QRIS', Icon: QrCode, bg: '#eaf3ff', color: '#2f80ed' },
+  { id: 'debit' as const, nama: 'Debit', Icon: CreditCard, bg: '#fff2e5', color: '#f5a742' },
+  { id: 'ewallet' as const, nama: 'E-Wallet', Icon: Wallet, bg: '#f3edff', color: '#8a5cf6' },
 ];
 
-const ewalletList = [
-  {
-    id: 'gopay',
-    nama: 'GoPay',
-    warna: '#00aed6',
-  },
-  {
-    id: 'dana',
-    nama: 'DANA',
-    warna: '#118eea',
-  },
-  {
-    id: 'ovo',
-    nama: 'OVO',
-    warna: '#4c3494',
-  },
-  {
-    id: 'shopeepay',
-    nama: 'ShopeePay',
-    warna: '#ee4d2d',
-  },
+const ewallet = [
+  { id: 'gopay', nama: 'GoPay', warna: '#00aed6' },
+  { id: 'dana', nama: 'DANA', warna: '#118eea' },
+  { id: 'ovo', nama: 'OVO', warna: '#4c3494' },
+  { id: 'shopeepay', nama: 'ShopeePay', warna: '#ee4d2d' },
 ];
 
-function formatRupiah(angka: number) {
-  return 'Rp ' + Number(angka || 0).toLocaleString('id-ID');
-}
+const rupiah = (n: number) =>
+  'Rp ' + Number(n || 0).toLocaleString('id-ID');
 
-function formatWaktu(detik: number) {
-  const menit = Math.floor(detik / 60);
-  const sisa = detik % 60;
-
-  return `${String(menit).padStart(2, '0')}:${String(
-    sisa
+const waktu = (detik: number) =>
+  `${String(Math.floor(detik / 60)).padStart(2, '0')}:${String(
+    detik % 60
   ).padStart(2, '0')}`;
-}
 
 export default function PembayaranPage() {
   const router = useRouter();
 
   const [namaUser, setNamaUser] = useState('Kasir');
   const [kasirId, setKasirId] = useState<string | null>(null);
-
-  const [itemBelanja, setItemBelanja] = useState<ItemBelanja[]>(
-    []
-  );
-
+  const [items, setItems] = useState<Item[]>([]);
   const [promo, setPromo] = useState<Promo | null>(null);
   const [diskon, setDiskon] = useState(0);
-
-  const [metodeAktif, setMetodeAktif] =
-    useState<MetodeId | null>(null);
-
-  const [tahap, setTahap] =
-    useState<TahapPembayaran>('pilih');
-
-  const [uangDiterima, setUangDiterima] = useState('');
-
-  const [detailBerhasil, setDetailBerhasil] =
-    useState<DetailBerhasil | null>(null);
-
+  const [metodeAktif, setMetodeAktif] = useState<MetodeId | null>(null);
+  const [tahap, setTahap] = useState<'pilih' | 'proses' | 'berhasil'>('pilih');
+  const [uang, setUang] = useState('');
+  const [detail, setDetail] = useState<Detail | null>(null);
+  const [waktuTransaksi, setWaktuTransaksi] = useState('');
   const [menyimpan, setMenyimpan] = useState(false);
-  const [simpanError, setSimpanError] = useState('');
-
-  const [ewalletProvider, setEwalletProvider] =
-    useState<string | null>(null);
-
-  const [ewalletTahap, setEwalletTahap] = useState<
-    'pilih' | 'qr'
-  >('pilih');
-
-  const [sisaWaktu, setSisaWaktu] = useState(300);
-
-  const [waktuTransaksi, setWaktuTransaksi] =
-    useState('');
+  const [error, setError] = useState('');
+  const [provider, setProvider] = useState<string | null>(null);
+  const [ewalletTahap, setEwalletTahap] = useState<'pilih' | 'qr'>('pilih');
+  const [timer, setTimer] = useState(300);
 
   useEffect(() => {
     try {
-      const userRaw =
-        localStorage.getItem('indomart_user');
+      const user = JSON.parse(localStorage.getItem('indomart_user') || '{}');
+      if (user.nama) setNamaUser(user.nama);
+      if (user.email) setKasirId(user.email);
 
-      if (userRaw) {
-        const user = JSON.parse(userRaw);
+      const transaksi: Transaksi = JSON.parse(
+        localStorage.getItem('transaksiAktif') || '{}'
+      );
 
-        if (user?.nama) {
-          setNamaUser(user.nama);
-        }
+      const keranjang = JSON.parse(
+        localStorage.getItem('keranjangAktif') || '[]'
+      );
 
-        if (user?.email) {
-          setKasirId(user.email);
-        }
-      }
+      const data = transaksi.items || transaksi.keranjang || keranjang;
+      setItems(Array.isArray(data) ? data : []);
 
-      const transaksiRaw =
-        localStorage.getItem('transaksiAktif');
-
-      let transaksi: TransaksiAktif | null = null;
-
-      if (transaksiRaw) {
-        transaksi = JSON.parse(transaksiRaw);
-      }
-
-      const keranjangRaw =
-        localStorage.getItem('keranjangAktif');
-
-      let keranjangFallback: ItemBelanja[] = [];
-
-      if (keranjangRaw) {
-        try {
-          const parsed = JSON.parse(keranjangRaw);
-
-          if (Array.isArray(parsed)) {
-            keranjangFallback = parsed;
-          }
-        } catch {
-          keranjangFallback = [];
-        }
-      }
-
-      const items =
-        transaksi?.items ??
-        transaksi?.keranjang ??
-        keranjangFallback;
-
-      if (Array.isArray(items)) {
-        setItemBelanja(items);
-      }
-
-      const promoAktif =
-        transaksi?.promo ??
-        transaksi?.promoTerpilih ??
-        transaksi?.selectedPromo ??
+      const p =
+        transaksi.promo ||
+        transaksi.promoTerpilih ||
+        transaksi.selectedPromo ||
         null;
 
-      setPromo(promoAktif);
+      setPromo(p);
 
-      const total = (items ?? []).reduce(
-        (sum, item) =>
-          sum +
-          Number(item.harga || 0) *
-            Number(item.qty || 0),
+      const total = (data || []).reduce(
+        (a: number, i: Item) => a + Number(i.harga) * Number(i.qty),
         0
       );
 
-      let diskonFinal = Number(
-        transaksi?.diskon ?? 0
-      );
+      let d = Number(transaksi.diskon || 0);
 
-      if (!diskonFinal && promoAktif) {
-        const persen = Number(
-          promoAktif.persen ??
-            promoAktif.diskon ??
-            0
-        );
-
-        if (persen > 0) {
-          diskonFinal = Math.round(
-            (total * persen) / 100
-          );
-        }
+      if (!d && p) {
+        const persen = Number(p.persen ?? p.diskon ?? 0);
+        if (persen > 0) d = Math.round((total * persen) / 100);
       }
 
-      setDiskon(
-        Math.min(Math.max(diskonFinal, 0), total)
-      );
-    } catch (error) {
-      console.error(
-        'Gagal membaca transaksi:',
-        error
-      );
+      setDiskon(Math.min(Math.max(d, 0), total));
+    } catch (e) {
+      console.error(e);
     }
   }, []);
 
-  const jumlahItem = itemBelanja.reduce(
-    (sum, item) => sum + Number(item.qty || 0),
+  const total = items.reduce(
+    (a, i) => a + Number(i.harga) * Number(i.qty),
     0
   );
 
-  const totalBelanja = itemBelanja.reduce(
-    (sum, item) =>
-      sum +
-      Number(item.harga || 0) *
-        Number(item.qty || 0),
-    0
-  );
+  const grandTotal = Math.max(total - diskon, 0);
+  const uangDiterima = Number(uang) || 0;
+  const kembalian = Math.max(uangDiterima - grandTotal, 0);
 
-  const grandTotal = Math.max(
-    totalBelanja - diskon,
-    0
-  );
-
-  const metodeTerpilih =
-    metodeList.find(
-      (metode) => metode.id === metodeAktif
-    ) ?? null;
-
-  const providerAktif =
-    ewalletList.find(
-      (provider) =>
-        provider.id === ewalletProvider
-    ) ?? null;
-
-  const angkaUangDiterima =
-    Number(uangDiterima) || 0;
-
-  const kembalian = Math.max(
-    angkaUangDiterima - grandTotal,
-    0
-  );
-
-  const uangCukup =
-    angkaUangDiterima >= grandTotal &&
-    grandTotal > 0;
+  const metodeDipilih = metode.find((m) => m.id === metodeAktif);
+  const providerDipilih = ewallet.find((e) => e.id === provider);
 
   useEffect(() => {
-    const perluCountdown =
-      tahap === 'proses' &&
-      metodeTerpilih &&
-      metodeTerpilih.id !== 'tunai';
+    if (tahap !== 'proses' || metodeAktif === 'tunai') return;
 
-    if (!perluCountdown) {
-      return;
-    }
-
-    setSisaWaktu(300);
-
-    const timer = setInterval(() => {
-      setSisaWaktu((prev) =>
-        prev > 0 ? prev - 1 : 0
-      );
+    setTimer(300);
+    const t = setInterval(() => {
+      setTimer((x) => (x > 0 ? x - 1 : 0));
     }, 1000);
 
-    return () => clearInterval(timer);
-  }, [tahap, metodeTerpilih]);
+    return () => clearInterval(t);
+  }, [tahap, metodeAktif]);
 
-  const handleUangDiterimaChange = (
-    e: ChangeEvent<HTMLInputElement>
-  ) => {
-    setUangDiterima(
-      e.target.value.replace(/\D/g, '')
-    );
-  };
-
-  const handlePilihMetode = (
-    id: MetodeId
-  ) => {
+  const pilihMetode = (id: MetodeId) => {
     setMetodeAktif(id);
-    setUangDiterima('');
-    setEwalletProvider(null);
+    setUang('');
+    setProvider(null);
     setEwalletTahap('pilih');
-    setSimpanError('');
+    setError('');
     setTahap('proses');
   };
 
-  const handleGantiMetode = () => {
+  const kembali = () => {
     setMetodeAktif(null);
-    setUangDiterima('');
-    setEwalletProvider(null);
+    setUang('');
+    setProvider(null);
     setEwalletTahap('pilih');
-    setSimpanError('');
+    setError('');
     setTahap('pilih');
   };
 
-  const simpanTransaksi = async (
-    metode: string,
-    jumlahDibayar: number,
-    kembalianAkhir: number
+  const simpan = async (
+    metodeBayar: string,
+    dibayar: number,
+    kembaliBayar: number
   ) => {
     if (!kasirId) {
-      setSimpanError(
-        'Data kasir tidak ditemukan. Silakan login ulang.'
-      );
+      setError('Data kasir tidak ditemukan. Silakan login ulang.');
       return false;
     }
 
-    if (itemBelanja.length === 0) {
-      setSimpanError(
-        'Keranjang belanja masih kosong.'
-      );
+    if (!items.length) {
+      setError('Keranjang belanja masih kosong.');
       return false;
     }
 
     setMenyimpan(true);
-    setSimpanError('');
+    setError('');
 
     try {
-      const response = await fetch(
-        '/api/transactions',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            kasirId,
+      const res = await fetch('/api/transactions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          kasirId,
+          items: items.map((i) => ({
+            id: i.id,
+            nama: i.nama,
+            harga: Number(i.harga),
+            qty: Number(i.qty),
+          })),
+          diskon,
+          kodePromo: promo?.nama || null,
+          metode: metodeBayar,
+          jumlahDibayar: dibayar,
+          kembalian: kembaliBayar,
+        }),
+      });
 
-            items: itemBelanja.map((item) => ({
-              id: item.id,
-              nama: item.nama,
-              harga: Number(item.harga),
-              qty: Number(item.qty),
-            })),
+      const data = await res.json();
 
-            diskon,
-            kodePromo: promo?.nama ?? null,
-            metode,
-            jumlahDibayar,
-            kembalian: kembalianAkhir,
-          }),
-        }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        setSimpanError(
-          data?.message ||
-            'Gagal menyimpan transaksi.'
-        );
-
+      if (!res.ok) {
+        setError(data?.message || 'Gagal menyimpan transaksi.');
         return false;
       }
 
       return true;
-    } catch (error) {
-      console.error(error);
-
-      setSimpanError(
-        'Terjadi kesalahan koneksi saat menyimpan transaksi.'
-      );
-
+    } catch {
+      setError('Terjadi kesalahan koneksi saat menyimpan transaksi.');
       return false;
     } finally {
       setMenyimpan(false);
     }
   };
 
-  const tampilkanStruk = (
-    metode: string,
-    totalBayar: number,
-    kembalianAkhir: number
+  const berhasil = (
+    metodeBayar: string,
+    dibayar: number,
+    kembaliBayar: number
   ) => {
     setWaktuTransaksi(
       new Date().toLocaleString('id-ID', {
@@ -456,105 +232,283 @@ export default function PembayaranPage() {
       })
     );
 
-    setDetailBerhasil({
-      metode,
-      totalBayar,
-      kembalian: kembalianAkhir,
+    setDetail({
+      metode: metodeBayar,
+      totalBayar: dibayar,
+      kembalian: kembaliBayar,
     });
 
     setTahap('berhasil');
   };
 
-  const handleBayarTunai = async () => {
-    if (!uangCukup || menyimpan) {
+  const bayarTunai = async () => {
+    if (uangDiterima < grandTotal || menyimpan) return;
+
+    const ok = await simpan('Tunai', uangDiterima, kembalian);
+
+    if (ok) berhasil('Tunai', uangDiterima, kembalian);
+  };
+
+  const bayarNonTunai = async () => {
+    if (!metodeDipilih || menyimpan || grandTotal <= 0) return;
+
+    const nama =
+      metodeAktif === 'ewallet' && providerDipilih
+        ? providerDipilih.nama
+        : metodeDipilih.nama;
+
+    const ok = await simpan(nama, grandTotal, 0);
+
+    if (ok) berhasil(nama, grandTotal, 0);
+  };
+
+  /* CETAK KHUSUS STRUK */
+  const cetakStruk = () => {
+    if (!detail) return;
+
+    const isi = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Struk INDOMARET</title>
+        <style>
+          @page {
+            size: 80mm auto;
+            margin: 0;
+          }
+
+          * {
+            box-sizing: border-box;
+          }
+
+          body {
+            margin: 0;
+            padding: 7mm 5mm;
+            width: 80mm;
+            font-family: Arial, Helvetica, sans-serif;
+            color: #111;
+            background: #fff;
+            font-size: 11px;
+          }
+
+          .center {
+            text-align: center;
+          }
+
+          .logo {
+            width: 38px;
+            height: 38px;
+            margin: 0 auto 6px;
+            border-radius: 8px;
+            background: #eaf2ff;
+            color: #2f80ed;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+          }
+
+          h1 {
+            margin: 0;
+            font-size: 17px;
+            letter-spacing: .5px;
+          }
+
+          .sub {
+            margin-top: 3px;
+            color: #666;
+            font-size: 10px;
+          }
+
+          .line {
+            border-top: 1px dashed #aaa;
+            margin: 12px 0;
+          }
+
+          .item {
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
+            margin: 0 0 8px;
+          }
+
+          .item-left {
+            min-width: 0;
+          }
+
+          .nama {
+            font-weight: bold;
+            font-size: 11px;
+          }
+
+          .qty {
+            margin-top: 3px;
+            color: #777;
+            font-size: 10px;
+          }
+
+          .harga {
+            white-space: nowrap;
+            font-weight: bold;
+          }
+
+          .row {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            margin: 7px 0;
+          }
+
+          .bold {
+            font-weight: bold;
+          }
+
+          .green {
+            color: #198754;
+          }
+
+          .thanks {
+            margin-top: 14px;
+            text-align: center;
+            color: #777;
+            font-size: 10px;
+          }
+        </style>
+      </head>
+
+      <body>
+        <div class="center">
+          <div class="logo">⌂</div>
+          <h1>INDOMARET</h1>
+          <div class="sub">Struk Pembayaran</div>
+          <div class="sub">${waktuTransaksi}</div>
+        </div>
+
+        <div class="line"></div>
+
+        ${items
+          .map(
+            (item) => `
+              <div class="item">
+                <div class="item-left">
+                  <div class="nama">${item.nama}</div>
+                  <div class="qty">
+                    ${item.qty} x ${rupiah(item.harga)}
+                  </div>
+                </div>
+
+                <div class="harga">
+                  ${rupiah(item.harga * item.qty)}
+                </div>
+              </div>
+            `
+          )
+          .join('')}
+
+        <div class="line"></div>
+
+        <div class="row">
+          <span>Total Harga</span>
+          <span>${rupiah(total)}</span>
+        </div>
+
+        ${
+          diskon > 0
+            ? `
+              <div class="row green">
+                <span>Diskon</span>
+                <span>-${rupiah(diskon)}</span>
+              </div>
+            `
+            : ''
+        }
+
+        ${
+          promo?.nama
+            ? `
+              <div class="row">
+                <span>Promo</span>
+                <span>${promo.nama}</span>
+              </div>
+            `
+            : ''
+        }
+
+        <div class="line"></div>
+
+        <div class="row bold">
+          <span>Harga Setelah Diskon</span>
+          <span>${rupiah(grandTotal)}</span>
+        </div>
+
+        <div class="row">
+          <span>Metode Pembayaran</span>
+          <span class="bold">${detail.metode}</span>
+        </div>
+
+        <div class="row">
+          <span>Dibayar</span>
+          <span>${rupiah(detail.totalBayar)}</span>
+        </div>
+
+        ${
+          detail.metode === 'Tunai'
+            ? `
+              <div class="row">
+                <span>Kembalian</span>
+                <span class="bold">${rupiah(detail.kembalian)}</span>
+              </div>
+            `
+            : ''
+        }
+
+        <div class="line"></div>
+
+        <div class="thanks">
+          Terima kasih telah berbelanja
+        </div>
+
+        <script>
+          window.onload = function () {
+            window.print();
+            setTimeout(function () {
+              window.close();
+            }, 500);
+          };
+        </script>
+      </body>
+      </html>
+    `;
+
+    const win = window.open('', '_blank', 'width=400,height=700');
+
+    if (!win) {
+      alert('Popup diblokir browser. Izinkan popup untuk mencetak struk.');
       return;
     }
 
-    const sukses = await simpanTransaksi(
-      'Tunai',
-      angkaUangDiterima,
-      kembalian
-    );
-
-    if (!sukses) {
-      return;
-    }
-
-    tampilkanStruk(
-      'Tunai',
-      angkaUangDiterima,
-      kembalian
-    );
+    win.document.open();
+    win.document.write(isi);
+    win.document.close();
   };
 
-  const handleKonfirmasiNonTunai =
-    async () => {
-      if (
-        !metodeTerpilih ||
-        menyimpan ||
-        grandTotal <= 0
-      ) {
-        return;
-      }
-
-      const namaMetode =
-        metodeTerpilih.id === 'ewallet' &&
-        providerAktif
-          ? providerAktif.nama
-          : metodeTerpilih.nama;
-
-      const sukses = await simpanTransaksi(
-        namaMetode,
-        grandTotal,
-        0
-      );
-
-      if (!sukses) {
-        return;
-      }
-
-      tampilkanStruk(
-        namaMetode,
-        grandTotal,
-        0
-      );
-    };
-
-  const handleCetakStruk = () => {
-    window.print();
-  };
-
-  const handleTransaksiBaru = () => {
-    localStorage.removeItem(
-      'keranjangAktif'
-    );
-
-    localStorage.removeItem(
-      'transaksiAktif'
-    );
-
+  const transaksiBaru = () => {
+    localStorage.removeItem('keranjangAktif');
+    localStorage.removeItem('transaksiAktif');
     router.push('/transaksi');
   };
 
-  const handleSelesai = () => {
-    localStorage.removeItem(
-      'keranjangAktif'
-    );
+  const selesai = () => {
+    localStorage.removeItem('keranjangAktif');
+    localStorage.removeItem('transaksiAktif');
 
-    localStorage.removeItem(
-      'transaksiAktif'
-    );
-
-    setItemBelanja([]);
+    setItems([]);
     setPromo(null);
     setDiskon(0);
     setMetodeAktif(null);
-    setUangDiterima('');
-    setEwalletProvider(null);
-    setEwalletTahap('pilih');
-    setDetailBerhasil(null);
-    setWaktuTransaksi('');
-    setSimpanError('');
+    setUang('');
+    setProvider(null);
+    setDetail(null);
     setTahap('pilih');
   };
 
@@ -564,1093 +518,471 @@ export default function PembayaranPage() {
 
       <div className="main">
         <header className="topbar">
-          <div className="topbar-left">
+          <div className="top-left">
             <div className="store-icon">
-              <Store
-                size={19}
-                color="#2f80ed"
-              />
+              <Store size={19} color="#2f80ed" />
             </div>
-
             <div>
-              <div className="store-name">
-                Indomaret
-              </div>
-
-              <div className="store-sub">
-                Kasir / Pembayaran
-              </div>
+              <b>Indomaret</b>
+              <small>Kasir / Pembayaran</small>
             </div>
           </div>
 
-          <div className="topbar-right">
-            <button
-              className="icon-btn"
-              type="button"
-            >
-              <Bell
-                size={18}
-                color="#4b5875"
-              />
-
-              <span className="dot" />
+          <div className="top-right">
+            <button className="icon-btn">
+              <Bell size={18} />
+              <i />
             </button>
 
-            <div className="user-block">
+            <div className="user">
               <div className="avatar">
-                <User
-                  size={16}
-                  color="#fff"
-                />
+                <User size={16} color="#fff" />
               </div>
-
               <div>
-                <div className="user-name">
-                  {namaUser}
-                </div>
-
-                <div className="user-role">
-                  Kasir
-                </div>
+                <b>{namaUser}</b>
+                <small>Kasir</small>
               </div>
-
-              <ChevronDown
-                size={15}
-                color="#8794ab"
-              />
+              <ChevronDown size={15} />
             </div>
           </div>
         </header>
 
         <main className="content">
-          <div className="page-header">
-            <div className="page-icon">
-              <Wallet
-                size={20}
-                color="#2f80ed"
-              />
+          <div className="page-title">
+            <div className="title-icon">
+              <Wallet size={20} color="#2f80ed" />
             </div>
-
             <div>
               <h1>Pembayaran</h1>
-              <p>
-                Pilih metode pembayaran yang
-                tersedia
-              </p>
+              <p>Pilih metode pembayaran yang tersedia</p>
             </div>
           </div>
 
-          <div
-            className={`payment-grid ${
-              tahap !== 'pilih'
-                ? 'blur-belakang'
-                : ''
-            }`}
-          >
-            <div className="metode-panel">
-              <div className="section-title">
-                Metode Pembayaran
+          <div className={`grid ${tahap !== 'pilih' ? 'blur' : ''}`}>
+            <section className="panel">
+              <h3>Metode Pembayaran</h3>
+
+              <div className="methods">
+                {metode.map((m) => (
+                  <button
+                    key={m.id}
+                    className="method"
+                    style={{
+                      background: m.bg,
+                      borderColor:
+                        metodeAktif === m.id ? m.color : 'transparent',
+                    }}
+                    onClick={() => pilihMetode(m.id)}
+                  >
+                    <span style={{ background: m.color }}>
+                      <m.Icon size={20} color="#fff" />
+                    </span>
+                    <b style={{ color: m.color }}>{m.nama}</b>
+                  </button>
+                ))}
               </div>
 
-              <div className="metode-grid">
-                {metodeList.map(
-                  ({
-                    id,
-                    nama,
-                    Icon,
-                    cardBg,
-                    iconBg,
-                    textColor,
-                  }) => (
-                    <button
-                      key={id}
-                      type="button"
-                      className="metode-card-mini"
-                      style={{
-                        background: cardBg,
-                        borderColor:
-                          metodeAktif === id
-                            ? textColor
-                            : 'transparent',
-                      }}
-                      onClick={() =>
-                        handlePilihMetode(id)
-                      }
-                    >
-                      <div
-                        className="metode-icon-mini"
-                        style={{
-                          background: iconBg,
-                        }}
-                      >
-                        <Icon
-                          size={20}
-                          color="#fff"
-                        />
-                      </div>
-
-                      <span
-                        style={{
-                          color: textColor,
-                        }}
-                      >
-                        {nama}
-                      </span>
-                    </button>
-                  )
-                )}
-              </div>
-
-              <div className="promo-info-box">
+              <div className="promo">
                 <div className="promo-icon">
-                  <Tag
-                    size={17}
-                    color="#2f80ed"
-                  />
+                  <Tag size={17} color="#2f80ed" />
                 </div>
-
                 <div>
-                  <div className="promo-title">
-                    {promo?.nama ||
-                      'Tidak Ada Promo'}
-                  </div>
-
-                  <div className="promo-sub">
+                  <b>{promo?.nama || 'Tidak Ada Promo'}</b>
+                  <small>
                     {promo
                       ? 'Promo sudah diterapkan dari transaksi'
                       : 'Tidak ada promo yang digunakan'}
-                  </div>
+                  </small>
                 </div>
               </div>
-            </div>
+            </section>
 
-            <div className="ringkasan-panel">
-              <div className="ringkasan-head">
-                <div className="ringkasan-icon">
-                  <ShoppingBag
-                    size={19}
-                    color="#fff"
-                  />
+            <section className="panel summary">
+              <div className="summary-title">
+                <div className="bag">
+                  <ShoppingBag size={19} color="#fff" />
                 </div>
-
                 <div>
-                  <h2>
-                    Ringkasan Belanja
-                  </h2>
-
-                  <p>
-                    {jumlahItem} item
-                  </p>
+                  <h2>Ringkasan Belanja</h2>
+                  <p>{items.reduce((a, i) => a + Number(i.qty), 0)} item</p>
                 </div>
               </div>
 
-              <div className="item-list">
-                {itemBelanja.length === 0 ? (
-                  <div className="item-kosong">
-                    Belum ada barang.
-                    <br />
-                    Silakan pilih produk
-                    terlebih dahulu.
-                  </div>
-                ) : (
-                  itemBelanja.map((item) => (
-                    <div
-                      className="item-row"
-                      key={item.id}
-                    >
-                      <div className="item-thumb">
+              <div className="items">
+                {items.length ? (
+                  items.map((item) => (
+                    <div className="item" key={item.id}>
+                      <div className="thumb">
                         {item.gambar ? (
-                          <img
-                            src={item.gambar}
-                            alt={item.nama}
-                          />
+                          <img src={item.gambar} alt="" />
                         ) : (
-                          <ShoppingBag
-                            size={18}
-                            color="#9aa7bc"
-                          />
+                          <ShoppingBag size={18} color="#9aa7bc" />
                         )}
                       </div>
-
                       <div className="item-info">
-                        <div className="item-nama">
-                          {item.nama}
-                        </div>
-
-                        <div className="item-qty">
-                          {item.qty} pcs
-                        </div>
+                        <b>{item.nama}</b>
+                        <small>{item.qty} pcs</small>
                       </div>
-
-                      <div className="item-harga">
-                        {formatRupiah(
-                          item.harga *
-                            item.qty
-                        )}
-                      </div>
+                      <strong>{rupiah(item.harga * item.qty)}</strong>
                     </div>
                   ))
+                ) : (
+                  <div className="empty">Belum ada barang.</div>
                 )}
               </div>
 
-              <div className="harga-box">
-                <div className="harga-row">
-                  <span>
-                    Total Harga
-                  </span>
-
-                  <span>
-                    {formatRupiah(
-                      totalBelanja
-                    )}
-                  </span>
+              <div className="price-box">
+                <div>
+                  <span>Total Harga</span>
+                  <span>{rupiah(total)}</span>
                 </div>
 
                 {diskon > 0 && (
-                  <div className="harga-row diskon-row">
+                  <div className="discount">
                     <span>
-                      <Percent size={13} />
-                      Diskon
+                      <Percent size={13} /> Diskon
                     </span>
-
-                    <span>
-                      -{formatRupiah(diskon)}
-                    </span>
+                    <span>-{rupiah(diskon)}</span>
                   </div>
                 )}
 
-                <div className="harga-row harga-setelah">
-                  <span>
-                    Harga Setelah Diskon
-                  </span>
-
-                  <strong>
-                    {formatRupiah(
-                      grandTotal
-                    )}
-                  </strong>
+                <div className="after">
+                  <b>Harga Setelah Diskon</b>
+                  <strong>{rupiah(grandTotal)}</strong>
                 </div>
               </div>
 
-              <div className="grand-total-box">
-                <span>
-                  Total Pembayaran
-                </span>
-
-                <strong>
-                  {formatRupiah(
-                    grandTotal
-                  )}
-                </strong>
+              <div className="grand">
+                <b>Total Pembayaran</b>
+                <strong>{rupiah(grandTotal)}</strong>
               </div>
 
-              <div className="hint-pilih-metode">
+              <div className="hint">
                 <ArrowRight size={14} />
-                Pilih metode pembayaran
-                untuk melanjutkan.
+                Pilih metode pembayaran untuk melanjutkan.
               </div>
-            </div>
+            </section>
           </div>
 
           {tahap !== 'pilih' && (
-            <div className="modal-overlay">
-              <div className="modal-box">
-                {tahap === 'proses' &&
-                  metodeTerpilih && (
-                    <>
-                      <div className="modal-header">
-                        <div className="modal-title-row">
-                          <div
-                            className="modal-title-icon"
-                            style={{
-                              background:
-                                metodeTerpilih.iconBg,
-                            }}
-                          >
-                            <metodeTerpilih.Icon
-                              size={15}
-                              color="#fff"
+            <div className="overlay">
+              <div className="modal">
+                {tahap === 'proses' && metodeDipilih && (
+                  <>
+                    <div className="modal-head">
+                      <div className="modal-title">
+                        <span style={{ background: metodeDipilih.color }}>
+                          <metodeDipilih.Icon size={15} color="#fff" />
+                        </span>
+                        <h2>{metodeDipilih.nama}</h2>
+                      </div>
+                      <button onClick={kembali}>
+                        <X size={18} />
+                      </button>
+                    </div>
+
+                    <div className="modal-body">
+                      {error && <div className="error">{error}</div>}
+
+                      {metodeAktif === 'tunai' && (
+                        <div className="cash">
+                          <div className="cash-head">
+                            <Banknote size={20} color="#27ae60" />
+                            <div>
+                              <b>Pembayaran Tunai</b>
+                              <small>Masukkan uang yang diterima pelanggan.</small>
+                            </div>
+                          </div>
+
+                          <div className="total-modal">
+                            <span>Total Pembayaran</span>
+                            <strong>{rupiah(grandTotal)}</strong>
+                          </div>
+
+                          <label>Uang Diterima</label>
+
+                          <div className="money-input">
+                            <span>Rp</span>
+                            <input
+                              value={
+                                uang
+                                  ? Number(uang).toLocaleString('id-ID')
+                                  : ''
+                              }
+                              inputMode="numeric"
+                              placeholder="0"
+                              onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                                setUang(e.target.value.replace(/\D/g, ''))
+                              }
                             />
                           </div>
 
-                          <h2>
-                            {metodeTerpilih.nama}
-                          </h2>
+                          <div className="change">
+                            <span>Kembalian</span>
+                            <strong>{rupiah(kembalian)}</strong>
+                          </div>
+
+                          <button
+                            className="primary"
+                            disabled={uangDiterima < grandTotal || menyimpan}
+                            onClick={bayarTunai}
+                          >
+                            {menyimpan ? (
+                              <Loader2 className="spin" size={16} />
+                            ) : (
+                              <CheckCircle2 size={16} />
+                            )}
+                            {menyimpan ? 'Menyimpan...' : 'Bayar'}
+                          </button>
+
+                          <button className="back" onClick={kembali}>
+                            <ArrowLeft size={13} /> Kembali
+                          </button>
                         </div>
+                      )}
 
-                        <button
-                          type="button"
-                          className="modal-close"
-                          onClick={
-                            handleGantiMetode
-                          }
-                        >
-                          <X
-                            size={18}
-                            color="#4b5875"
-                          />
-                        </button>
-                      </div>
+                      {metodeAktif === 'qris' && (
+                        <div className="qris">
+                          <b>QRIS</b>
+                          <small>Scan QR untuk membayar.</small>
 
-                      <div className="modal-body">
-                        {simpanError && (
-                          <div className="simpan-error">
-                            {simpanError}
+                          <div className="qr-img">
+                            <Image
+                              src="/qris/scan-gb.png"
+                              alt="QRIS"
+                              fill
+                              className="object"
+                            />
                           </div>
-                        )}
 
-                        {metodeTerpilih.id ===
-                          'tunai' && (
-                          <div className="tunai-box">
-                            <div className="debit-header-row">
-                              <div
-                                className="debit-icon"
-                                style={{
-                                  background:
-                                    '#27ae60',
-                                }}
-                              >
-                                <Banknote
-                                  size={18}
-                                  color="#fff"
-                                />
-                              </div>
+                          <strong>{rupiah(grandTotal)}</strong>
 
-                              <div>
-                                <div className="debit-nama">
-                                  Pembayaran Tunai
-                                </div>
-
-                                <div className="debit-desc">
-                                  Masukkan uang
-                                  yang diterima
-                                  pelanggan.
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="debit-total-box">
-                              <span>
-                                Total Pembayaran
-                              </span>
-
-                              <strong>
-                                {formatRupiah(
-                                  grandTotal
-                                )}
-                              </strong>
-                            </div>
-
-                            <label
-                              className="tunai-label"
-                              htmlFor="uangDiterima"
-                            >
-                              Uang Diterima
-                            </label>
-
-                            <div className="tunai-input-wrap">
-                              <span className="tunai-input-prefix">
-                                Rp
-                              </span>
-
-                              <input
-                                id="uangDiterima"
-                                type="text"
-                                inputMode="numeric"
-                                className="tunai-input"
-                                placeholder="0"
-                                value={
-                                  uangDiterima
-                                    ? Number(
-                                        uangDiterima
-                                      ).toLocaleString(
-                                        'id-ID'
-                                      )
-                                    : ''
-                                }
-                                onChange={
-                                  handleUangDiterimaChange
-                                }
-                              />
-                            </div>
-
-                            <div className="tunai-row">
-                              <span>
-                                Kembalian
-                              </span>
-
-                              <strong>
-                                {formatRupiah(
-                                  kembalian
-                                )}
-                              </strong>
-                            </div>
-
-                            <button
-                              type="button"
-                              className="btn-konfirmasi"
-                              disabled={
-                                !uangCukup ||
-                                menyimpan
-                              }
-                              onClick={
-                                handleBayarTunai
-                              }
-                            >
-                              {menyimpan ? (
-                                <Loader2
-                                  size={16}
-                                  className="spin"
-                                />
-                              ) : (
-                                <CheckCircle2
-                                  size={16}
-                                />
-                              )}
-
-                              {menyimpan
-                                ? 'Menyimpan...'
-                                : 'Bayar'}
-                            </button>
-
-                            <button
-                              type="button"
-                              className="kembali-btn"
-                              onClick={
-                                handleGantiMetode
-                              }
-                            >
-                              <ArrowLeft
-                                size={13}
-                              />
-                              Kembali
-                            </button>
+                          <div className="waiting">
+                            Menunggu pembayaran... {waktu(timer)}
                           </div>
-                        )}
 
-                        {metodeTerpilih.id ===
-                          'qris' && (
-                          <div className="qris-box">
-                            <div className="qris-icon-row">
-                              <div
-                                className="qris-icon"
+                          <button
+                            className="primary"
+                            onClick={bayarNonTunai}
+                            disabled={menyimpan}
+                          >
+                            {menyimpan ? 'Menyimpan...' : 'Konfirmasi Pembayaran'}
+                          </button>
+
+                          <button className="back" onClick={kembali}>
+                            <ArrowLeft size={13} /> Kembali
+                          </button>
+                        </div>
+                      )}
+
+                      {metodeAktif === 'debit' && (
+                        <div className="qris">
+                          <b>Debit</b>
+                          <small>Lakukan pembayaran melalui mesin EDC.</small>
+
+                          <div className="total-modal">
+                            <span>Total Pembayaran</span>
+                            <strong>{rupiah(grandTotal)}</strong>
+                          </div>
+
+                          <div className="debit-img">
+                            <Image
+                              src="/debit/gb-debit.png"
+                              alt="EDC"
+                              fill
+                              className="object"
+                            />
+                          </div>
+
+                          <div className="waiting">
+                            Menunggu pembayaran... {waktu(timer)}
+                          </div>
+
+                          <button
+                            className="primary"
+                            onClick={bayarNonTunai}
+                            disabled={menyimpan}
+                          >
+                            {menyimpan ? 'Menyimpan...' : 'Konfirmasi Pembayaran'}
+                          </button>
+
+                          <button className="back" onClick={kembali}>
+                            <ArrowLeft size={13} /> Kembali
+                          </button>
+                        </div>
+                      )}
+
+                      {metodeAktif === 'ewallet' && ewalletTahap === 'pilih' && (
+                        <div className="ewallet">
+                          <b>E-Wallet</b>
+                          <small>Pilih e-wallet pelanggan.</small>
+
+                          <div className="wallet-grid">
+                            {ewallet.map((e) => (
+                              <button
+                                key={e.id}
+                                className="wallet"
                                 style={{
-                                  background:
-                                    '#2f80ed',
+                                  borderColor:
+                                    provider === e.id ? e.warna : 'transparent',
                                 }}
+                                onClick={() => setProvider(e.id)}
                               >
-                                <QrCode
-                                  size={18}
-                                  color="#fff"
-                                />
-                              </div>
+                                <Wallet size={15} color={e.warna} />
+                                <span style={{ color: e.warna }}>
+                                  {e.nama}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
 
-                              <div>
-                                <div className="qris-nama">
-                                  QRIS
-                                </div>
+                          <div className="total-modal">
+                            <span>Total Pembayaran</span>
+                            <strong>{rupiah(grandTotal)}</strong>
+                          </div>
 
-                                <div className="qris-desc">
-                                  Scan QR untuk
-                                  membayar.
-                                </div>
-                              </div>
-                            </div>
+                          <button
+                            className="primary"
+                            disabled={!provider}
+                            onClick={() => setEwalletTahap('qr')}
+                          >
+                            Lanjutkan <ArrowRight size={16} />
+                          </button>
 
-                            <div className="qris-gambar-wrap">
+                          <button className="back" onClick={kembali}>
+                            <ArrowLeft size={13} /> Kembali
+                          </button>
+                        </div>
+                      )}
+
+                      {metodeAktif === 'ewallet' &&
+                        ewalletTahap === 'qr' &&
+                        providerDipilih && (
+                          <div className="qris">
+                            <b>{providerDipilih.nama}</b>
+                            <small>Scan QR untuk melakukan pembayaran.</small>
+
+                            <div className="qr-img">
                               <Image
                                 src="/qris/scan-gb.png"
-                                alt="QRIS"
+                                alt="QR"
                                 fill
-                                className="qris-gambar-img"
+                                className="object"
                               />
                             </div>
 
-                            <div className="qris-total">
-                              {formatRupiah(
-                                grandTotal
-                              )}
-                            </div>
+                            <strong>{rupiah(grandTotal)}</strong>
 
-                            <div className="qris-countdown">
-                              Menunggu pembayaran...
-                              {' '}
-                              {formatWaktu(
-                                sisaWaktu
-                              )}
+                            <div className="waiting">
+                              Menunggu pembayaran... {waktu(timer)}
                             </div>
 
                             <button
-                              type="button"
-                              className="btn-konfirmasi"
-                              disabled={
-                                menyimpan
-                              }
-                              onClick={
-                                handleKonfirmasiNonTunai
-                              }
+                              className="primary"
+                              onClick={bayarNonTunai}
+                              disabled={menyimpan}
                             >
-                              {menyimpan ? (
-                                <Loader2
-                                  size={16}
-                                  className="spin"
-                                />
-                              ) : (
-                                <CheckCircle2
-                                  size={16}
-                                />
-                              )}
-
-                              {menyimpan
-                                ? 'Menyimpan...'
-                                : 'Konfirmasi Pembayaran'}
+                              {menyimpan ? 'Menyimpan...' : 'Bayar'}
                             </button>
 
                             <button
-                              type="button"
-                              className="kembali-btn"
-                              onClick={
-                                handleGantiMetode
-                              }
+                              className="back"
+                              onClick={() => setEwalletTahap('pilih')}
                             >
-                              <ArrowLeft
-                                size={13}
-                              />
-                              Kembali
+                              <ArrowLeft size={13} /> Ganti E-Wallet
                             </button>
                           </div>
                         )}
+                    </div>
+                  </>
+                )}
 
-                        {metodeTerpilih.id ===
-                          'debit' && (
-                          <div className="debit-box">
-                            <div className="debit-header-row">
-                              <div
-                                className="debit-icon"
-                                style={{
-                                  background:
-                                    '#f5a742',
-                                }}
-                              >
-                                <CreditCard
-                                  size={18}
-                                  color="#fff"
-                                />
-                              </div>
+                {tahap === 'berhasil' && detail && (
+                  <>
+                    <div className="success-head">
+                      <CheckCircle2 size={24} color="#27ae60" />
+                      <h2>Pembayaran Berhasil</h2>
+                    </div>
 
-                              <div>
-                                <div className="debit-nama">
-                                  Debit
-                                </div>
-
-                                <div className="debit-desc">
-                                  Lakukan pembayaran
-                                  melalui mesin
-                                  EDC.
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="debit-total-box">
-                              <span>
-                                Total Pembayaran
-                              </span>
-
-                              <strong>
-                                {formatRupiah(
-                                  grandTotal
-                                )}
-                              </strong>
-                            </div>
-
-                            <div className="debit-gambar-wrap">
-                              <Image
-                                src="/debit/gb-debit.png"
-                                alt="Mesin EDC"
-                                fill
-                                className="debit-gambar-img"
-                              />
-                            </div>
-
-                            <div className="qris-countdown">
-                              Menunggu pembayaran...
-                              {' '}
-                              {formatWaktu(
-                                sisaWaktu
-                              )}
-                            </div>
-
-                            <button
-                              type="button"
-                              className="btn-konfirmasi"
-                              disabled={
-                                menyimpan
-                              }
-                              onClick={
-                                handleKonfirmasiNonTunai
-                              }
-                            >
-                              {menyimpan ? (
-                                <Loader2
-                                  size={16}
-                                  className="spin"
-                                />
-                              ) : (
-                                <CheckCircle2
-                                  size={16}
-                                />
-                              )}
-
-                              {menyimpan
-                                ? 'Menyimpan...'
-                                : 'Konfirmasi Pembayaran'}
-                            </button>
-
-                            <button
-                              type="button"
-                              className="kembali-btn"
-                              onClick={
-                                handleGantiMetode
-                              }
-                            >
-                              <ArrowLeft
-                                size={13}
-                              />
-                              Kembali
-                            </button>
-                          </div>
-                        )}
-
-                        {metodeTerpilih.id ===
-                          'ewallet' &&
-                          ewalletTahap ===
-                            'pilih' && (
-                            <div className="ewallet-box">
-                              <div className="debit-header-row">
-                                <div
-                                  className="debit-icon"
-                                  style={{
-                                    background:
-                                      '#8a5cf6',
-                                  }}
-                                >
-                                  <Wallet
-                                    size={18}
-                                    color="#fff"
-                                  />
-                                </div>
-
-                                <div>
-                                  <div className="debit-nama">
-                                    E-Wallet
-                                  </div>
-
-                                  <div className="debit-desc">
-                                    Pilih e-wallet
-                                    pelanggan.
-                                  </div>
-                                </div>
-                              </div>
-
-                              <div className="ewallet-grid">
-                                {ewalletList.map(
-                                  (
-                                    provider
-                                  ) => (
-                                    <button
-                                      key={
-                                        provider.id
-                                      }
-                                      type="button"
-                                      className="ewallet-pill"
-                                      style={{
-                                        borderColor:
-                                          ewalletProvider ===
-                                          provider.id
-                                            ? provider.warna
-                                            : 'transparent',
-                                      }}
-                                      onClick={() =>
-                                        setEwalletProvider(
-                                          provider.id
-                                        )
-                                      }
-                                    >
-                                      <Wallet
-                                        size={
-                                          15
-                                        }
-                                        color={
-                                          provider.warna
-                                        }
-                                      />
-
-                                      <span
-                                        style={{
-                                          color:
-                                            provider.warna,
-                                        }}
-                                      >
-                                        {
-                                          provider.nama
-                                        }
-                                      </span>
-                                    </button>
-                                  )
-                                )}
-                              </div>
-
-                              <div className="debit-total-box">
-                                <span>
-                                  Total Pembayaran
-                                </span>
-
-                                <strong>
-                                  {formatRupiah(
-                                    grandTotal
-                                  )}
-                                </strong>
-                              </div>
-
-                              <button
-                                type="button"
-                                className="btn-konfirmasi"
-                                disabled={
-                                  !ewalletProvider
-                                }
-                                onClick={() =>
-                                  setEwalletTahap(
-                                    'qr'
-                                  )
-                                }
-                              >
-                                Lanjutkan
-                                <ArrowRight
-                                  size={16}
-                                />
-                              </button>
-
-                              <button
-                                type="button"
-                                className="kembali-btn"
-                                onClick={
-                                  handleGantiMetode
-                                }
-                              >
-                                <ArrowLeft
-                                  size={13}
-                                />
-                                Kembali
-                              </button>
-                            </div>
-                          )}
-
-                        {metodeTerpilih.id ===
-                          'ewallet' &&
-                          ewalletTahap ===
-                            'qr' &&
-                          providerAktif && (
-                            <div className="qris-box">
-                              <div className="qris-icon-row">
-                                <div
-                                  className="qris-icon"
-                                  style={{
-                                    background:
-                                      providerAktif.warna,
-                                  }}
-                                >
-                                  <Wallet
-                                    size={18}
-                                    color="#fff"
-                                  />
-                                </div>
-
-                                <div>
-                                  <div className="qris-nama">
-                                    {
-                                      providerAktif.nama
-                                    }
-                                  </div>
-
-                                  <div className="qris-desc">
-                                    Scan QR untuk
-                                    melakukan
-                                    pembayaran.
-                                  </div>
-                                </div>
-                              </div>
-
-                              <div className="qris-gambar-wrap">
-                                <Image
-                                  src="/qris/scan-gb.png"
-                                  alt="QR E-Wallet"
-                                  fill
-                                  className="qris-gambar-img"
-                                />
-                              </div>
-
-                              <div className="qris-total">
-                                {formatRupiah(
-                                  grandTotal
-                                )}
-                              </div>
-
-                              <div className="qris-countdown">
-                                Menunggu pembayaran...
-                                {' '}
-                                {formatWaktu(
-                                  sisaWaktu
-                                )}
-                              </div>
-
-                              <button
-                                type="button"
-                                className="btn-konfirmasi"
-                                disabled={
-                                  menyimpan
-                                }
-                                onClick={
-                                  handleKonfirmasiNonTunai
-                                }
-                              >
-                                {menyimpan ? (
-                                  <Loader2
-                                    size={16}
-                                    className="spin"
-                                  />
-                                ) : (
-                                  <CheckCircle2
-                                    size={16}
-                                  />
-                                )}
-
-                                {menyimpan
-                                  ? 'Menyimpan...'
-                                  : 'Bayar'}
-                              </button>
-
-                              <button
-                                type="button"
-                                className="kembali-btn"
-                                onClick={() =>
-                                  setEwalletTahap(
-                                    'pilih'
-                                  )
-                                }
-                              >
-                                <ArrowLeft
-                                  size={13}
-                                />
-                                Ganti E-Wallet
-                              </button>
-                            </div>
-                          )}
-                      </div>
-                    </>
-                  )}
-
-                {tahap === 'berhasil' &&
-                  detailBerhasil && (
-                    <>
-                      <div className="modal-header berhasil-header">
-                        <h2>
-                          Pembayaran Berhasil
-                        </h2>
+                    <div className="receipt">
+                      <div className="receipt-logo">
+                        <Store size={23} />
                       </div>
 
-                      <div className="modal-body">
-                        <div className="struk-box">
-                          <div className="struk-logo">
-                            <Store
-                              size={22}
-                            />
+                      <h2>INDOMARET</h2>
+                      <p>Struk Pembayaran</p>
+                      <small>{waktuTransaksi}</small>
+
+                      <div className="receipt-line" />
+
+                      {items.map((item) => (
+                        <div className="receipt-item" key={item.id}>
+                          <div>
+                            <b>{item.nama}</b>
+                            <small>
+                              {item.qty} x {rupiah(item.harga)}
+                            </small>
                           </div>
-
-                          <h2>INDOMARET</h2>
-
-                          <p className="struk-sub">
-                            Struk Pembayaran
-                          </p>
-
-                          {waktuTransaksi && (
-                            <p className="struk-waktu">
-                              {waktuTransaksi}
-                            </p>
-                          )}
-
-                          <div className="struk-line" />
-
-                          <div className="struk-items">
-                            {itemBelanja.map(
-                              (item) => (
-                                <div
-                                  className="struk-item"
-                                  key={item.id}
-                                >
-                                  <div>
-                                    <strong>
-                                      {item.nama}
-                                    </strong>
-
-                                    <span>
-                                      {item.qty} x{' '}
-                                      {formatRupiah(
-                                        item.harga
-                                      )}
-                                    </span>
-                                  </div>
-
-                                  <strong>
-                                    {formatRupiah(
-                                      item.harga *
-                                        item.qty
-                                    )}
-                                  </strong>
-                                </div>
-                              )
-                            )}
-                          </div>
-
-                          <div className="struk-line" />
-
-                          <div className="struk-row">
-                            <span>
-                              Total Harga
-                            </span>
-
-                            <span>
-                              {formatRupiah(
-                                totalBelanja
-                              )}
-                            </span>
-                          </div>
-
-                          {promo?.nama && (
-                            <div className="struk-row promo-struk">
-                              <span>
-                                Promo
-                              </span>
-
-                              <span>
-                                {promo.nama}
-                              </span>
-                            </div>
-                          )}
-
-                          {diskon > 0 && (
-                            <div className="struk-row diskon-struk">
-                              <span>
-                                Diskon
-                              </span>
-
-                              <span>
-                                -{formatRupiah(
-                                  diskon
-                                )}
-                              </span>
-                            </div>
-                          )}
-
-                          <div className="struk-row harga-setelah-struk">
-                            <strong>
-                              Harga Setelah Diskon
-                            </strong>
-
-                            <strong>
-                              {formatRupiah(
-                                grandTotal
-                              )}
-                            </strong>
-                          </div>
-
-                          <div className="struk-row">
-                            <span>
-                              Metode Pembayaran
-                            </span>
-
-                            <strong>
-                              {
-                                detailBerhasil.metode
-                              }
-                            </strong>
-                          </div>
-
-                          <div className="struk-row">
-                            <span>
-                              Dibayar
-                            </span>
-
-                            <span>
-                              {formatRupiah(
-                                detailBerhasil.totalBayar
-                              )}
-                            </span>
-                          </div>
-
-                          {detailBerhasil.metode ===
-                            'Tunai' && (
-                            <div className="struk-row">
-                              <span>
-                                Kembalian
-                              </span>
-
-                              <strong>
-                                {formatRupiah(
-                                  detailBerhasil.kembalian
-                                )}
-                              </strong>
-                            </div>
-                          )}
-
-                          <div className="struk-line" />
-
-                          <p className="terima-kasih">
-                            Terima kasih telah
-                            berbelanja
-                          </p>
-
-                          <button
-                            type="button"
-                            className="btn-cetak"
-                            onClick={
-                              handleCetakStruk
-                            }
-                          >
-                            <Printer
-                              size={16}
-                            />
-                            Cetak Struk
-                          </button>
-
-                          <button
-                            type="button"
-                            className="btn-transaksi-baru"
-                            onClick={
-                              handleTransaksiBaru
-                            }
-                          >
-                            <RefreshCw
-                              size={16}
-                            />
-                            Transaksi Baru
-                          </button>
-
-                          <button
-                            type="button"
-                            className="btn-selesai"
-                            onClick={
-                              handleSelesai
-                            }
-                          >
-                            <CheckCircle2
-                              size={16}
-                            />
-                            Selesai
-                          </button>
+                          <b>{rupiah(item.harga * item.qty)}</b>
                         </div>
+                      ))}
+
+                      <div className="receipt-line" />
+
+                      <div className="receipt-row">
+                        <span>Total Harga</span>
+                        <span>{rupiah(total)}</span>
                       </div>
-                    </>
-                  )}
+
+                      {diskon > 0 && (
+                        <div className="receipt-row green">
+                          <span>Diskon</span>
+                          <span>-{rupiah(diskon)}</span>
+                        </div>
+                      )}
+
+                      <div className="receipt-row bold">
+                        <span>Harga Setelah Diskon</span>
+                        <span>{rupiah(grandTotal)}</span>
+                      </div>
+
+                      <div className="receipt-row">
+                        <span>Metode Pembayaran</span>
+                        <b>{detail.metode}</b>
+                      </div>
+
+                      <div className="receipt-row">
+                        <span>Dibayar</span>
+                        <span>{rupiah(detail.totalBayar)}</span>
+                      </div>
+
+                      {detail.metode === 'Tunai' && (
+                        <div className="receipt-row">
+                          <span>Kembalian</span>
+                          <b>{rupiah(detail.kembalian)}</b>
+                        </div>
+                      )}
+
+                      <div className="receipt-line" />
+
+                      <p className="thanks">
+                        Terima kasih telah berbelanja
+                      </p>
+
+                      <button className="print-btn" onClick={cetakStruk}>
+                        <Printer size={16} /> Cetak Struk
+                      </button>
+
+                      <button className="new-btn" onClick={transaksiBaru}>
+                        <RefreshCw size={16} /> Transaksi Baru
+                      </button>
+
+                      <button className="done-btn" onClick={selesai}>
+                        <CheckCircle2 size={16} /> Selesai
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           )}
@@ -1658,940 +990,33 @@ export default function PembayaranPage() {
       </div>
 
       <style jsx>{`
-        .wrapper {
-          min-height: 100vh;
-          display: flex;
-          background: #f4f6fb;
-          color: #16233d;
-          font-family: 'Segoe UI',
-            system-ui, sans-serif;
-        }
-
-        .main {
-          flex: 1;
-          min-width: 0;
-        }
-
-        .topbar {
-          height: 62px;
-          padding: 0 25px;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          background: #fff;
-          border-bottom: 1px solid #eaeef5;
-        }
-
-        .topbar-left,
-        .topbar-right,
-        .user-block,
-        .promo-info-box,
-        .ringkasan-head,
-        .modal-title-row,
-        .debit-header-row,
-        .qris-icon-row {
-          display: flex;
-          align-items: center;
-        }
-
-        .topbar-left {
-          gap: 10px;
-        }
-
-        .topbar-right {
-          gap: 18px;
-        }
-
-        .store-icon {
-          width: 36px;
-          height: 36px;
-          border-radius: 9px;
-          background: #eaf2ff;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-
-        .store-name {
-          font-size: 13.5px;
-          font-weight: 800;
-          color: #10295c;
-        }
-
-        .store-sub,
-        .user-role,
-        .page-header p,
-        .promo-sub,
-        .ringkasan-head p,
-        .debit-desc,
-        .qris-desc {
-          color: #8794ab;
-        }
-
-        .store-sub {
-          font-size: 10.5px;
-        }
-
-        .icon-btn {
-          position: relative;
-          border: 0;
-          background: none;
-          cursor: pointer;
-        }
-
-        .dot {
-          position: absolute;
-          top: -1px;
-          right: -1px;
-          width: 6px;
-          height: 6px;
-          border-radius: 50%;
-          background: #e2231a;
-        }
-
-        .user-block {
-          gap: 8px;
-        }
-
-        .avatar {
-          width: 34px;
-          height: 34px;
-          border-radius: 50%;
-          background: #10295c;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-
-        .user-name {
-          font-size: 12.5px;
-          font-weight: 700;
-        }
-
-        .user-role {
-          font-size: 10.5px;
-        }
-
-        .content {
-          padding: 24px 28px 36px;
-        }
-
-        .page-header {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          margin-bottom: 22px;
-        }
-
-        .page-icon {
-          width: 40px;
-          height: 40px;
-          border-radius: 11px;
-          background: #e7f1ff;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-
-        .page-header h1 {
-          margin: 0 0 2px;
-          font-size: 21px;
-          font-weight: 800;
-          color: #10295c;
-        }
-
-        .page-header p {
-          margin: 0;
-          font-size: 12px;
-        }
-
-        .payment-grid {
-          display: grid;
-          grid-template-columns: 1.6fr 1fr;
-          gap: 18px;
-          max-width: 1080px;
-          align-items: start;
-        }
-
-        .metode-panel,
-        .ringkasan-panel {
-          background: #fff;
-          border: 1px solid #eef1f8;
-          border-radius: 18px;
-          padding: 18px;
-          box-shadow: 0 10px 24px
-            rgba(16, 41, 92, 0.06);
-        }
-
-        .blur-belakang {
-          filter: blur(2px);
-          pointer-events: none;
-        }
-
-        .section-title {
-          margin-bottom: 13px;
-          font-size: 13px;
-          font-weight: 800;
-          color: #10295c;
-        }
-
-        .metode-grid {
-          display: grid;
-          grid-template-columns: repeat(
-            4,
-            1fr
-          );
-          gap: 12px;
-        }
-
-        .metode-card-mini {
-          padding: 18px 10px;
-          border: 1.5px solid
-            transparent;
-          border-radius: 14px;
-          cursor: pointer;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          gap: 9px;
-          transition: 0.18s;
-        }
-
-        .metode-card-mini:hover {
-          transform: translateY(-2px);
-        }
-
-        .metode-card-mini span {
-          font-size: 12.5px;
-          font-weight: 800;
-        }
-
-        .metode-icon-mini {
-          width: 42px;
-          height: 42px;
-          border-radius: 12px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-
-        .promo-info-box {
-          gap: 12px;
-          margin-top: 16px;
-          padding-top: 14px;
-          border-top: 1px solid #f0f2f8;
-        }
-
-        .promo-icon {
-          width: 38px;
-          height: 38px;
-          border-radius: 10px;
-          background: #e7f1ff;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-
-        .promo-title {
-          font-size: 13px;
-          font-weight: 800;
-          color: #10295c;
-        }
-
-        .promo-sub {
-          margin-top: 2px;
-          font-size: 11px;
-        }
-
-        .ringkasan-head {
-          gap: 12px;
-          margin-bottom: 18px;
-        }
-
-        .ringkasan-icon {
-          width: 42px;
-          height: 42px;
-          border-radius: 12px;
-          background: #10295c;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-
-        .ringkasan-head h2 {
-          margin: 0 0 2px;
-          font-size: 16px;
-          color: #10295c;
-        }
-
-        .ringkasan-head p {
-          margin: 0;
-          font-size: 11px;
-        }
-
-        .item-list {
-          display: flex;
-          flex-direction: column;
-          gap: 10px;
-          margin-bottom: 15px;
-        }
-
-        .item-row {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          padding: 9px 10px;
-          background: #f8fafd;
-          border-radius: 12px;
-        }
-
-        .item-thumb {
-          width: 44px;
-          height: 44px;
-          border-radius: 9px;
-          background: #fff;
-          overflow: hidden;
-          flex-shrink: 0;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-
-        .item-thumb img {
-          width: 100%;
-          height: 100%;
-          object-fit: contain;
-          padding: 4px;
-        }
-
-        .item-info {
-          flex: 1;
-          min-width: 0;
-        }
-
-        .item-nama {
-          font-size: 12.5px;
-          font-weight: 800;
-          color: #10295c;
-        }
-
-        .item-qty {
-          font-size: 10.5px;
-          color: #8794ab;
-        }
-
-        .item-harga {
-          font-size: 12.5px;
-          font-weight: 800;
-          color: #10295c;
-        }
-
-        .item-kosong {
-          padding: 20px 8px;
-          text-align: center;
-          border-radius: 12px;
-          background: #f8fafd;
-          color: #8794ab;
-          font-size: 11px;
-        }
-
-        .harga-box {
-          padding: 14px;
-          background: #eaf2ff;
-          border-radius: 13px;
-        }
-
-        .harga-row {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 10px;
-          margin-bottom: 9px;
-          font-size: 11.5px;
-          font-weight: 700;
-          color: #4b5875;
-        }
-
-        .harga-row:last-child {
-          margin-bottom: 0;
-        }
-
-        .diskon-row {
-          color: #27ae60;
-        }
-
-        .diskon-row span:first-child {
-          display: flex;
-          align-items: center;
-          gap: 4px;
-        }
-
-        .harga-setelah {
-          margin-top: 9px;
-          padding-top: 11px;
-          border-top: 1px dashed
-            #c8d9ef;
-          color: #10295c;
-        }
-
-        .harga-setelah strong {
-          font-size: 15px;
-          color: #10295c;
-        }
-
-        .grand-total-box {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 16px 3px 11px;
-          color: #10295c;
-          font-weight: 800;
-        }
-
-        .grand-total-box strong {
-          font-size: 19px;
-        }
-
-        .hint-pilih-metode {
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          padding: 10px 12px;
-          border-radius: 10px;
-          background: #f8fafd;
-          color: #8794ab;
-          font-size: 11px;
-        }
-
-        .modal-overlay {
-          position: fixed;
-          inset: 0;
-          z-index: 50;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 20px;
-          background: rgba(
-            10,
-            20,
-            45,
-            0.55
-          );
-          backdrop-filter: blur(3px);
-        }
-
-        .modal-box {
-          width: 100%;
-          max-width: 440px;
-          max-height: 90vh;
-          overflow-y: auto;
-          background: #fff;
-          border-radius: 18px;
-          box-shadow: 0 24px 60px
-            rgba(8, 15, 35, 0.35);
-        }
-
-        .modal-header {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 18px 20px 5px;
-        }
-
-        .modal-title-row {
-          gap: 8px;
-        }
-
-        .modal-title-icon {
-          width: 28px;
-          height: 28px;
-          border-radius: 8px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-
-        .modal-header h2 {
-          margin: 0;
-          font-size: 17px;
-          color: #10295c;
-        }
-
-        .modal-close {
-          width: 30px;
-          height: 30px;
-          border: 0;
-          border-radius: 9px;
-          background: #f1f4f9;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-
-        .modal-body {
-          padding: 18px 20px 20px;
-        }
-
-        .simpan-error {
-          margin-bottom: 12px;
-          padding: 10px;
-          border-radius: 9px;
-          background: #fdecea;
-          color: #c0392b;
-          font-size: 11px;
-          font-weight: 600;
-        }
-
-        .debit-box,
-        .ewallet-box {
-          border: 1px solid #eef1f8;
-          border-radius: 14px;
-          overflow: hidden;
-        }
-
-        .tunai-box {
-          background: #f3fbf6;
-          border-radius: 14px;
-          overflow: hidden;
-        }
-
-        .debit-header-row {
-          align-items: flex-start;
-          gap: 12px;
-          padding: 16px;
-        }
-
-        .debit-icon {
-          width: 40px;
-          height: 40px;
-          border-radius: 11px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          flex-shrink: 0;
-        }
-
-        .debit-nama {
-          font-size: 14px;
-          font-weight: 800;
-          color: #10295c;
-        }
-
-        .debit-desc {
-          margin-top: 3px;
-          font-size: 11px;
-          line-height: 1.4;
-        }
-
-        .debit-total-box {
-          display: flex;
-          flex-direction: column;
-          gap: 4px;
-          padding: 13px 16px;
-          background: #f4f7fc;
-          font-size: 11px;
-          color: #4b5875;
-        }
-
-        .debit-total-box strong {
-          font-size: 19px;
-          color: #10295c;
-        }
-
-        .tunai-label {
-          display: block;
-          margin: 14px 14px 5px;
-          font-size: 11px;
-          font-weight: 700;
-          color: #4b5875;
-        }
-
-        .tunai-input-wrap {
-          position: relative;
-          margin: 0 14px 8px;
-        }
-
-        .tunai-input-prefix {
-          position: absolute;
-          top: 50%;
-          left: 12px;
-          transform: translateY(-50%);
-          font-size: 13px;
-          font-weight: 700;
-          color: #6b95c4;
-        }
-
-        .tunai-input {
-          width: 100%;
-          box-sizing: border-box;
-          padding: 11px 12px 11px 34px;
-          border: 1.5px solid #cfe9d9;
-          border-radius: 9px;
-          outline: none;
-          font-size: 14px;
-          background: #fff;
-        }
-
-        .tunai-row {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          margin: 0 14px 12px;
-          padding: 9px 11px;
-          border-radius: 9px;
-          background: #fff;
-          font-size: 12px;
-          font-weight: 700;
-          color: #4b5875;
-        }
-
-        .tunai-row strong {
-          color: #27ae60;
-        }
-
-        .btn-konfirmasi {
-          width: calc(100% - 28px);
-          margin: 0 14px 12px;
-          padding: 12px;
-          border: 0;
-          border-radius: 11px;
-          background: #2f80ed;
-          color: #fff;
-          font-size: 13px;
-          font-weight: 700;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 7px;
-        }
-
-        .btn-konfirmasi:hover:not(:disabled) {
-          background: #1c67cf;
-        }
-
-        .btn-konfirmasi:disabled {
-          opacity: 0.5;
-          cursor: not-allowed;
-        }
-
-        .kembali-btn {
-          width: 100%;
-          padding: 0 15px 15px;
-          border: 0;
-          background: none;
-          color: #4b5875;
-          cursor: pointer;
-          font-size: 11.5px;
-          font-weight: 600;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 5px;
-        }
-
-        .qris-box {
-          padding: 16px;
-          background: #eaf3ff;
-          border-radius: 14px;
-        }
-
-        .qris-icon-row {
-          align-items: flex-start;
-          gap: 10px;
-        }
-
-        .qris-icon {
-          width: 34px;
-          height: 34px;
-          border-radius: 9px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-
-        .qris-nama {
-          font-size: 13px;
-          font-weight: 800;
-          color: #10295c;
-        }
-
-        .qris-desc {
-          margin-top: 2px;
-          font-size: 10.5px;
-        }
-
-        .qris-gambar-wrap {
-          position: relative;
-          width: 160px;
-          height: 160px;
-          margin: 14px auto;
-          background: #fff;
-          border-radius: 12px;
-          overflow: hidden;
-        }
-
-        .qris-gambar-img {
-          object-fit: contain;
-          padding: 8px;
-        }
-
-        .qris-total {
-          padding: 9px;
-          border-radius: 9px;
-          background: #fff;
-          text-align: center;
-          font-size: 18px;
-          font-weight: 800;
-          color: #10295c;
-        }
-
-        .qris-countdown {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 6px;
-          margin: 10px 0;
-          padding: 9px;
-          border-radius: 9px;
-          background: #fff;
-          color: #2f80ed;
-          font-size: 11.5px;
-          font-weight: 700;
-        }
-
-        .debit-gambar-wrap {
-          position: relative;
-          width: 100%;
-          height: 150px;
-        }
-
-        .debit-gambar-img {
-          object-fit: contain;
-        }
-
-        .ewallet-grid {
-          display: grid;
-          grid-template-columns: repeat(
-            2,
-            1fr
-          );
-          gap: 9px;
-          padding: 0 16px 14px;
-        }
-
-        .ewallet-pill {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 11px;
-          border: 1.5px solid
-            transparent;
-          border-radius: 10px;
-          background: #f8fafd;
-          cursor: pointer;
-          font-size: 12px;
-          font-weight: 700;
-        }
-
-        .ewallet-box
-          .debit-total-box {
-          margin: 0 16px 14px;
-          border-radius: 10px;
-        }
-
-        .ewallet-box
-          .btn-konfirmasi {
-          width: calc(100% - 32px);
-          margin: 0 16px 12px;
-        }
-
-        .struk-box {
-          padding: 20px;
-          background: #fff;
-          text-align: center;
-        }
-
-        .struk-logo {
-          width: 46px;
-          height: 46px;
-          margin: 0 auto 7px;
-          border-radius: 12px;
-          background: #e7f1ff;
-          color: #2f80ed;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-
-        .struk-box > h2 {
-          margin: 0;
-          font-size: 17px;
-          color: #10295c;
-          letter-spacing: 0.5px;
-        }
-
-        .struk-sub {
-          margin: 3px 0 2px;
-          font-size: 10.5px;
-          color: #8794ab;
-        }
-
-        .struk-waktu {
-          margin: 0 0 14px;
-          font-size: 9.5px;
-          color: #9aa6b9;
-        }
-
-        .struk-line {
-          border-top: 1px dashed #cfd6e2;
-          margin: 12px 0;
-        }
-
-        .struk-item {
-          display: flex;
-          justify-content: space-between;
-          gap: 15px;
-          margin-bottom: 10px;
-          text-align: left;
-          font-size: 11px;
-        }
-
-        .struk-item div {
-          display: flex;
-          flex-direction: column;
-          gap: 3px;
-        }
-
-        .struk-item span {
-          color: #8794ab;
-        }
-
-        .struk-row {
-          display: flex;
-          justify-content: space-between;
-          gap: 12px;
-          text-align: left;
-          margin: 8px 0;
-          font-size: 11px;
-          color: #4b5875;
-        }
-
-        .struk-row strong {
-          color: #10295c;
-        }
-
-        .promo-struk {
-          color: #2f80ed;
-        }
-
-        .diskon-struk {
-          color: #27ae60;
-        }
-
-        .harga-setelah-struk {
-          padding: 9px 0;
-          border-top: 1px dashed #d5dce7;
-          border-bottom: 1px dashed #d5dce7;
-        }
-
-        .terima-kasih {
-          margin: 14px 0;
-          font-size: 10.5px;
-          color: #8794ab;
-        }
-
-        .btn-cetak,
-        .btn-transaksi-baru,
-        .btn-selesai {
-          width: 100%;
-          padding: 11px;
-          border: 0;
-          border-radius: 11px;
-          font-size: 12.5px;
-          font-weight: 700;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 7px;
-        }
-
-        .btn-cetak {
-          background: #e7f1ff;
-          color: #1c5aa8;
-          margin-bottom: 9px;
-        }
-
-        .btn-transaksi-baru {
-          background: #2f80ed;
-          color: #fff;
-        }
-
-        .btn-selesai {
-          margin-top: 9px;
-          background: #f1f4f9;
-          color: #4b5875;
-        }
-
-        .spin {
-          animation: spin 0.8s linear
-            infinite;
-        }
-
-        @keyframes spin {
-          to {
-            transform: rotate(360deg);
-          }
-        }
-
-        @media print {
-          body * {
-            visibility: hidden !important;
-          }
-
-          .struk-box,
-          .struk-box * {
-            visibility: visible !important;
-          }
-
-          .struk-box {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 80mm;
-            max-width: 80mm;
-            padding: 8mm;
-            box-shadow: none;
-            border-radius: 0;
-          }
-
-          .btn-cetak,
-          .btn-transaksi-baru,
-          .btn-selesai {
-            display: none !important;
-          }
-        }
-
-        @media (max-width: 1000px) {
-          .payment-grid {
-            grid-template-columns: 1fr;
-          }
-        }
-
-        @media (max-width: 620px) {
-          .metode-grid {
-            grid-template-columns: repeat(
-              2,
-              1fr
-            );
-          }
-
-          .content {
-            padding: 18px;
-          }
-        }
+        * { box-sizing:border-box; }
+        .wrapper{min-height:100vh;display:flex;background:#f4f6fb;color:#16233d;font-family:Segoe UI,system-ui,sans-serif}
+        .main{flex:1;min-width:0}
+        .topbar{height:62px;padding:0 25px;background:#fff;border-bottom:1px solid #eaeef5;display:flex;justify-content:space-between;align-items:center}
+        .top-left,.top-right,.user,.page-title,.summary-title,.promo,.modal-title{display:flex;align-items:center}
+        .top-left{gap:10px}.top-left b{display:block;font-size:13px;color:#10295c}.top-left small,.user small{display:block;color:#8794ab;font-size:10px}
+        .store-icon,.title-icon{width:38px;height:38px;border-radius:10px;background:#eaf2ff;display:flex;align-items:center;justify-content:center}
+        .top-right{gap:18px}.icon-btn{border:0;background:none;position:relative;cursor:pointer}.icon-btn i{position:absolute;right:-1px;top:0;width:6px;height:6px;background:#e2231a;border-radius:50%}
+        .user{gap:8px}.avatar{width:34px;height:34px;border-radius:50%;background:#10295c;display:flex;align-items:center;justify-content:center}.user b{font-size:12px}
+        .content{padding:24px 28px}.page-title{gap:12px;margin-bottom:22px}.page-title h1{margin:0;color:#10295c;font-size:21px}.page-title p{margin:2px 0;color:#8794ab;font-size:12px}
+        .grid{display:grid;grid-template-columns:1.6fr 1fr;gap:18px;max-width:1080px}.panel{background:#fff;border:1px solid #eef1f8;border-radius:18px;padding:18px;box-shadow:0 10px 24px #10295c0f}.panel h3{font-size:13px;color:#10295c;margin:0 0 13px}
+        .methods{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.method{padding:17px 8px;border:1.5px solid transparent;border-radius:14px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:8px}.method span{width:42px;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center}.method b{font-size:12px}
+        .promo{gap:11px;margin-top:16px;padding-top:14px;border-top:1px solid #eee}.promo-icon{width:38px;height:38px;border-radius:10px;background:#e7f1ff;display:flex;align-items:center;justify-content:center}.promo b{display:block;font-size:12px;color:#10295c}.promo small{font-size:10px;color:#8794ab}
+        .summary-title{gap:11px;margin-bottom:16px}.bag{width:42px;height:42px;border-radius:12px;background:#10295c;display:flex;align-items:center;justify-content:center}.summary-title h2{margin:0;font-size:16px;color:#10295c}.summary-title p{margin:2px 0;font-size:10px;color:#8794ab}
+        .items{display:flex;flex-direction:column;gap:8px}.item{display:flex;align-items:center;gap:9px;padding:8px;background:#f8fafd;border-radius:11px}.thumb{width:43px;height:43px;background:#fff;border-radius:8px;display:flex;align-items:center;justify-content:center;overflow:hidden}.thumb img{width:100%;height:100%;object-fit:contain}.item-info{flex:1}.item-info b,.item-info small{display:block}.item-info b{font-size:11px;color:#10295c}.item-info small{font-size:10px;color:#8794ab}.item>strong{font-size:11px;color:#10295c}.empty{text-align:center;padding:18px;color:#8794ab;font-size:11px}
+        .price-box{margin-top:14px;padding:13px;background:#eaf2ff;border-radius:12px}.price-box>div{display:flex;justify-content:space-between;font-size:11px;margin:7px 0;color:#4b5875}.discount{color:#27ae60!important}.after{padding-top:9px;border-top:1px dashed #c8d9ef;color:#10295c!important}.after strong{font-size:14px}.grand{display:flex;justify-content:space-between;padding:15px 2px 10px;color:#10295c}.grand strong{font-size:18px}.hint{padding:9px;background:#f8fafd;border-radius:9px;font-size:10px;color:#8794ab;display:flex;gap:5px;align-items:center}
+        .blur{filter:blur(2px);pointer-events:none}.overlay{position:fixed;inset:0;z-index:50;background:#0a142d8c;backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:20px}.modal{width:100%;max-width:440px;max-height:90vh;overflow:auto;background:#fff;border-radius:18px;box-shadow:0 24px 60px #080f2359}
+        .modal-head{display:flex;justify-content:space-between;align-items:center;padding:18px 20px 5px}.modal-title{gap:8px}.modal-title span{width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center}.modal-title h2,.success-head h2{font-size:17px;color:#10295c;margin:0}.modal-head button{border:0;background:#f1f4f9;border-radius:8px;width:30px;height:30px;cursor:pointer}.modal-body{padding:18px 20px 20px}.error{padding:9px;background:#fdecea;color:#c0392b;border-radius:8px;font-size:11px;margin-bottom:10px}
+        .cash,.ewallet,.qris{border-radius:13px;background:#f3fbf6;overflow:hidden}.cash-head{display:flex;gap:10px;padding:15px}.cash-head b,.ewallet>b,.qris>b{display:block;font-size:14px;color:#10295c}.cash-head small,.ewallet>small,.qris>small{display:block;color:#8794ab;font-size:10px;margin-top:3px}.total-modal{padding:12px 15px;background:#f4f7fc;display:flex;flex-direction:column;gap:3px;color:#4b5875;font-size:10px}.total-modal strong{font-size:18px;color:#10295c}
+        .cash label{display:block;margin:13px 14px 5px;font-size:11px;font-weight:bold;color:#4b5875}.money-input{position:relative;margin:0 14px 8px}.money-input span{position:absolute;left:11px;top:50%;transform:translateY(-50%);font-weight:bold;color:#6b95c4}.money-input input{width:100%;padding:11px 10px 11px 33px;border:1px solid #cfe9d9;border-radius:9px;font-size:14px;outline:none}.change{display:flex;justify-content:space-between;margin:0 14px 12px;padding:9px;background:#fff;border-radius:8px;font-size:11px}.change strong{color:#27ae60}
+        .primary{width:calc(100% - 28px);margin:0 14px 11px;padding:11px;border:0;border-radius:10px;background:#2f80ed;color:#fff;font-weight:bold;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px}.primary:disabled{opacity:.5}.back{width:100%;border:0;background:none;padding:0 15px 15px;color:#4b5875;cursor:pointer;display:flex;justify-content:center;align-items:center;gap:5px;font-size:11px}
+        .qris{padding:15px;background:#eaf3ff}.qris .qr-img{position:relative;width:160px;height:160px;background:#fff;border-radius:10px;margin:14px auto}.object{object-fit:contain;padding:7px}.qris>strong{display:block;text-align:center;background:#fff;padding:9px;border-radius:8px;font-size:18px;color:#10295c}.waiting{text-align:center;background:#fff;color:#2f80ed;border-radius:8px;padding:9px;margin:9px 0;font-size:10px;font-weight:bold}.debit-img{height:140px;position:relative}
+        .ewallet{background:#fff;border:1px solid #eef1f8;padding:15px}.wallet-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0}.wallet{display:flex;align-items:center;gap:7px;padding:10px;border:1.5px solid transparent;border-radius:9px;background:#f8fafd;cursor:pointer;font-weight:bold}
+        .success-head{padding:18px 20px 5px;display:flex;align-items:center;gap:8px}.receipt{padding:20px;text-align:center}.receipt-logo{width:45px;height:45px;margin:auto auto 7px;border-radius:11px;background:#e7f1ff;color:#2f80ed;display:flex;align-items:center;justify-content:center}.receipt>h2{margin:0;color:#10295c;font-size:17px}.receipt>p{margin:3px;color:#8794ab;font-size:10px}.receipt>small{color:#9aa6b9;font-size:9px}.receipt-line{border-top:1px dashed #cfd6e2;margin:12px 0}.receipt-item{display:flex;justify-content:space-between;text-align:left;margin:8px 0;font-size:10px}.receipt-item b{display:block}.receipt-item small{display:block;color:#8794ab;margin-top:3px}.receipt-row{display:flex;justify-content:space-between;text-align:left;margin:7px 0;font-size:10px;color:#4b5875}.receipt-row b{color:#10295c}.receipt-row.bold{padding:8px 0;border-top:1px dashed #d5dce7;border-bottom:1px dashed #d5dce7;font-weight:bold}.green{color:#27ae60!important}.thanks{margin:13px 0!important}
+        .print-btn,.new-btn,.done-btn{width:100%;border:0;border-radius:10px;padding:10px;margin-top:7px;display:flex;align-items:center;justify-content:center;gap:6px;font-weight:bold;cursor:pointer}.print-btn{background:#e7f1ff;color:#1c5aa8}.new-btn{background:#2f80ed;color:#fff}.done-btn{background:#f1f4f9;color:#4b5875}
+        .spin{animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
+        @media(max-width:1000px){.grid{grid-template-columns:1fr}}@media(max-width:620px){.methods{grid-template-columns:1fr 1fr}.content{padding:18px}}
       `}</style>
     </div>
   );

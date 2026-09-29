@@ -14,6 +14,12 @@ import {
   Plus,
   X,
   Loader2,
+  Package,
+  Tag,
+  Layers,
+  LayoutGrid,
+  Image as ImageIcon,
+  CheckCircle2,
 } from 'lucide-react';
 import {
   MultiFormatReader,
@@ -25,7 +31,6 @@ import {
   NotFoundException,
 } from '@zxing/library';
 import SidebarKasir from '../components/SidebarKasir';
-import HeaderKasir from '../components/HeaderKasir';
 
 type Produk = {
   kode: string; // barcode
@@ -98,6 +103,12 @@ const formKosong = {
   kategori: '',
   gambar: '',
 };
+
+// Class input yang dipakai berulang di modal Tambah Produk
+const inputClass =
+  'w-full rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-100';
+const labelClass =
+  'mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-400';
 
 export default function ScanBarcodePage() {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -493,8 +504,6 @@ export default function ScanBarcodePage() {
       <SidebarKasir />
 
       <div className="flex flex-1 flex-col">
-        <HeaderKasir judul="Indomart" breadcrumb="Kasir / Transaksi" />
-
         <main className="flex-1 px-8 py-7">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
@@ -762,130 +771,173 @@ export default function ScanBarcodePage() {
       {/* ==================== Modal Add Product ==================== */}
       {showAddProduct && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm"
           onClick={tutupFormAddProduct}
         >
           <div
-            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
+            className="flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-3xl bg-white shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between">
-              <h2 className="text-[16px] font-bold text-slate-900">Tambah Produk</h2>
-              <button
-                onClick={tutupFormAddProduct}
-                className="rounded-lg p-1.5 hover:bg-slate-100"
-                aria-label="Tutup"
-              >
-                <X size={18} strokeWidth={2.2} />
-              </button>
+            {/* HEADER GRADIENT */}
+            <div className="relative shrink-0 overflow-hidden bg-gradient-to-r from-blue-600 to-blue-500 px-6 py-5">
+              <div className="pointer-events-none absolute -right-6 -top-10 h-32 w-32 rounded-full bg-white/10" />
+              <div className="pointer-events-none absolute right-20 top-8 h-24 w-24 rounded-full bg-white/10" />
+
+              <div className="relative flex items-center justify-between">
+                <div className="flex items-center gap-3.5">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/20">
+                    <Package className="text-white" size={22} />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-bold text-white">Tambah Produk</h2>
+                    <p className="text-xs text-blue-100">Daftarkan produk baru ke sistem</p>
+                  </div>
+                </div>
+                <button
+                  onClick={tutupFormAddProduct}
+                  className="rounded-lg p-1.5 text-white/80 transition hover:bg-white/20 hover:text-white"
+                  aria-label="Tutup"
+                >
+                  <X size={20} />
+                </button>
+              </div>
             </div>
 
-            <div className="mt-4 flex flex-col gap-3">
-              <div>
-                <label className="mb-1 block text-[11.5px] font-semibold text-slate-600">
-                  Barcode
-                </label>
-                <input
-                  type="text"
-                  value={formProduk.barcode}
-                  onChange={(e) => setFormProduk({ ...formProduk, barcode: e.target.value })}
-                  placeholder="mis. 8991234567890"
-                  className="h-10 w-full rounded-lg border border-slate-200 px-3 text-[12.5px] outline-none focus:border-blue-400"
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-[11.5px] font-semibold text-slate-600">
-                  Nama Produk
-                </label>
-                <input
-                  type="text"
-                  value={formProduk.nama}
-                  onChange={(e) => setFormProduk({ ...formProduk, nama: e.target.value })}
-                  placeholder="mis. Paramex"
-                  className="h-10 w-full rounded-lg border border-slate-200 px-3 text-[12.5px] outline-none focus:border-blue-400"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
+            {/* BODY */}
+            <div className="flex-1 overflow-y-auto p-6">
+              <div className="grid grid-cols-1 gap-5">
                 <div>
-                  <label className="mb-1 block text-[11.5px] font-semibold text-slate-600">
-                    Harga
+                  <label className={labelClass}>
+                    <ScanLine size={13} className="text-blue-500" />
+                    Barcode
                   </label>
                   <input
-                    type="number"
-                    value={formProduk.harga}
-                    onChange={(e) => setFormProduk({ ...formProduk, harga: e.target.value })}
-                    placeholder="3000"
-                    className="h-10 w-full rounded-lg border border-slate-200 px-3 text-[12.5px] outline-none focus:border-blue-400"
+                    type="text"
+                    value={formProduk.barcode}
+                    onChange={(e) => setFormProduk({ ...formProduk, barcode: e.target.value })}
+                    placeholder="mis. 8991234567890"
+                    style={{ color: '#334155' }}
+                    className={inputClass}
                   />
                 </div>
+
                 <div>
-                  <label className="mb-1 block text-[11.5px] font-semibold text-slate-600">
-                    Stok
+                  <label className={labelClass}>
+                    <Package size={13} className="text-blue-500" />
+                    Nama Produk
                   </label>
                   <input
-                    type="number"
-                    value={formProduk.stok}
-                    onChange={(e) => setFormProduk({ ...formProduk, stok: e.target.value })}
-                    placeholder="0"
-                    className="h-10 w-full rounded-lg border border-slate-200 px-3 text-[12.5px] outline-none focus:border-blue-400"
+                    type="text"
+                    value={formProduk.nama}
+                    onChange={(e) => setFormProduk({ ...formProduk, nama: e.target.value })}
+                    placeholder="mis. Paramex"
+                    style={{ color: '#334155' }}
+                    className={inputClass}
                   />
                 </div>
-              </div>
 
-              <div>
-                <label className="mb-1 block text-[11.5px] font-semibold text-slate-600">
-                  Kategori
-                </label>
-                <input
-                  type="text"
-                  list="daftar-kategori"
-                  value={formProduk.kategori}
-                  onChange={(e) => setFormProduk({ ...formProduk, kategori: e.target.value })}
-                  placeholder="Pilih yang sudah ada, atau ketik kategori baru (mis. Obat)"
-                  className="h-10 w-full rounded-lg border border-slate-200 px-3 text-[12.5px] outline-none focus:border-blue-400"
-                />
-                {/* Kategori yang sudah ada muncul sebagai saran, tapi bisa
-                    diketik bebas — kalau kategorinya baru, backend yang
-                    otomatis nambahin ke tabel categories. */}
-                <datalist id="daftar-kategori">
-                  {daftarKategori.map((k) => (
-                    <option key={k.id} value={k.nama} />
-                  ))}
-                </datalist>
-              </div>
-
-              <div>
-                <label className="mb-1 block text-[11.5px] font-semibold text-slate-600">
-                  Path Gambar <span className="font-normal text-slate-400">(opsional)</span>
-                </label>
-                <input
-                  type="text"
-                  value={formProduk.gambar}
-                  onChange={(e) => setFormProduk({ ...formProduk, gambar: e.target.value })}
-                  placeholder="/produk/nama-file.png"
-                  className="h-10 w-full rounded-lg border border-slate-200 px-3 text-[12.5px] outline-none focus:border-blue-400"
-                />
-              </div>
-
-              {simpanError && (
-                <div className="rounded-lg bg-red-50 px-3 py-2 text-[11.5px] text-red-600">
-                  {simpanError}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className={labelClass}>
+                      <Tag size={13} className="text-blue-500" />
+                      Harga
+                    </label>
+                    <input
+                      type="number"
+                      value={formProduk.harga}
+                      onChange={(e) => setFormProduk({ ...formProduk, harga: e.target.value })}
+                      placeholder="3000"
+                      style={{ color: '#334155' }}
+                      className={inputClass}
+                    />
+                  </div>
+                  <div>
+                    <label className={labelClass}>
+                      <Layers size={13} className="text-blue-500" />
+                      Stok
+                    </label>
+                    <input
+                      type="number"
+                      value={formProduk.stok}
+                      onChange={(e) => setFormProduk({ ...formProduk, stok: e.target.value })}
+                      placeholder="0"
+                      style={{ color: '#334155' }}
+                      className={inputClass}
+                    />
+                  </div>
                 </div>
-              )}
-              {simpanSukses && (
-                <div className="rounded-lg bg-emerald-50 px-3 py-2 text-[11.5px] text-emerald-600">
-                  {simpanSukses}
-                </div>
-              )}
 
+                <div>
+                  <label className={labelClass}>
+                    <LayoutGrid size={13} className="text-blue-500" />
+                    Kategori
+                  </label>
+                  <input
+                    type="text"
+                    list="daftar-kategori"
+                    value={formProduk.kategori}
+                    onChange={(e) => setFormProduk({ ...formProduk, kategori: e.target.value })}
+                    placeholder="Pilih yang sudah ada, atau ketik baru (mis. Obat)"
+                    style={{ color: '#334155' }}
+                    className={inputClass}
+                  />
+                  {/* Kategori yang sudah ada muncul sebagai saran, tapi bisa
+                      diketik bebas — kalau kategorinya baru, backend yang
+                      otomatis nambahin ke tabel categories. */}
+                  <datalist id="daftar-kategori">
+                    {daftarKategori.map((k) => (
+                      <option key={k.id} value={k.nama} />
+                    ))}
+                  </datalist>
+                </div>
+
+                <div>
+                  <label className={labelClass}>
+                    <ImageIcon size={13} className="text-blue-500" />
+                    Path Gambar
+                    <span className="font-medium normal-case tracking-normal text-slate-400">
+                      (opsional)
+                    </span>
+                  </label>
+                  <input
+                    type="text"
+                    value={formProduk.gambar}
+                    onChange={(e) => setFormProduk({ ...formProduk, gambar: e.target.value })}
+                    placeholder="/produk/nama-file.png"
+                    style={{ color: '#334155' }}
+                    className={inputClass}
+                  />
+                </div>
+
+                {simpanError && (
+                  <p className="rounded-xl bg-rose-50 px-4 py-2.5 text-xs font-medium text-rose-600">
+                    {simpanError}
+                  </p>
+                )}
+                {simpanSukses && (
+                  <p className="flex items-center gap-1.5 rounded-xl bg-emerald-50 px-4 py-2.5 text-xs font-medium text-emerald-600">
+                    <CheckCircle2 size={14} />
+                    {simpanSukses}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* FOOTER */}
+            <div className="flex shrink-0 justify-end gap-2.5 border-t border-slate-100 px-6 py-4">
+              <button
+                onClick={tutupFormAddProduct}
+                disabled={simpanLoading}
+                className="rounded-xl border border-slate-200 bg-white px-6 py-2.5 text-sm font-semibold text-slate-600 shadow-sm transition hover:bg-slate-50 disabled:opacity-60"
+              >
+                Batal
+              </button>
               <button
                 onClick={handleSimpanProduk}
                 disabled={simpanLoading}
-                className="mt-1 flex h-11 items-center justify-center gap-2 rounded-lg bg-blue-600 text-[13px] font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                className="flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-blue-200 transition hover:bg-blue-700 disabled:opacity-60"
               >
-                {simpanLoading && <Loader2 size={15} className="animate-spin" />}
+                {simpanLoading ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />}
                 {simpanLoading ? 'Menyimpan...' : 'Simpan Produk'}
               </button>
             </div>

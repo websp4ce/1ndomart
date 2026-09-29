@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   Search,
   Undo2,
@@ -14,8 +14,12 @@ import {
   Trash2,
   X,
   Send,
+  Check,
+  Plus,
+  Minus,
   ChevronDown,
   ChevronLeft,
+  ArrowRight,
   PackageCheck,
   Loader2,
   Ban,
@@ -23,7 +27,7 @@ import {
   ArrowUpCircle,
   CalendarDays,
   CheckCircle2,
-  AlertTriangle,
+  RefreshCw,
 } from 'lucide-react';
 import SidebarInventory from '../../components/SidebarInventory'; // sesuaikan path sesuai lokasi asli
 
@@ -66,6 +70,63 @@ const jenisLabel: Record<JenisRetur, string> = {
   dari_pelanggan: 'Dari Pelanggan',
 };
 
+// class ditulis lengkap supaya Tailwind tidak membuangnya saat build
+const statusOption: Record<
+  StatusRetur,
+  {
+    desc: string;
+    icon: typeof Clock;
+    iconBox: string;
+    activeCard: string;
+    badge: string;
+  }
+> = {
+  Menunggu: {
+    desc: 'Belum ditangani',
+    icon: Clock,
+    iconBox: 'bg-amber-50 text-amber-500',
+    activeCard: 'border-amber-400 bg-amber-50/50',
+    badge: 'bg-amber-500',
+  },
+  Diproses: {
+    desc: 'Sedang berjalan',
+    icon: RefreshCw,
+    iconBox: 'bg-red-50 text-red-500',
+    activeCard: 'border-red-400 bg-red-50/50',
+    badge: 'bg-red-500',
+  },
+  Selesai: {
+    desc: 'Sudah tuntas',
+    icon: CheckCircle2,
+    iconBox: 'bg-emerald-50 text-emerald-500',
+    activeCard: 'border-emerald-400 bg-emerald-50/50',
+    badge: 'bg-emerald-500',
+  },
+  Dibuang: {
+    desc: 'Tidak bisa dipakai',
+    icon: Trash2,
+    iconBox: 'bg-purple-50 text-purple-500',
+    activeCard: 'border-purple-400 bg-purple-50/50',
+    badge: 'bg-purple-500',
+  },
+};
+
+const jenisOption: Record<
+  JenisRetur,
+  { icon: typeof Truck; activeCard: string; iconBox: string }
+> = {
+  ke_supplier: {
+    icon: Truck,
+    activeCard: 'border-orange-400 bg-orange-50/50 text-orange-600',
+    iconBox: 'bg-orange-50 text-orange-500',
+  },
+  dari_pelanggan: {
+    icon: Store,
+    activeCard: 'border-blue-400 bg-blue-50/50 text-blue-600',
+    iconBox: 'bg-blue-50 text-blue-600',
+  },
+};
+
 const ALASAN_LIST = ['Barang bocor', 'Barang rusak', 'Expired', 'Tidak sesuai', 'Salah kirim'];
 const STATUS_LIST: StatusRetur[] = ['Menunggu', 'Diproses', 'Selesai', 'Dibuang'];
 
@@ -83,6 +144,309 @@ function toDateInputValue(tgl: string) {
   if (isNaN(d.getTime())) return '';
   return d.toISOString().slice(0, 10);
 }
+
+/* ============================================================
+   KOMPONEN MODAL (dipakai bersama oleh Tambah, Edit, & Hapus)
+   ============================================================ */
+
+const headerTone = {
+  blue: {
+    bg: 'bg-gradient-to-r from-blue-600 to-blue-500',
+    sub: 'text-blue-100',
+  },
+  red: {
+    bg: 'bg-gradient-to-r from-red-600 to-red-500',
+    sub: 'text-red-100',
+  },
+};
+
+function ModalShell({
+  icon,
+  title,
+  subtitle,
+  onClose,
+  onBack,
+  footer,
+  tone = 'blue',
+  maxWidth = 'max-w-xl',
+  children,
+}: {
+  icon: ReactNode;
+  title: string;
+  subtitle: string;
+  onClose: () => void;
+  onBack?: () => void;
+  footer?: ReactNode;
+  tone?: 'blue' | 'red';
+  maxWidth?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
+      <div className={`flex max-h-[92vh] w-full ${maxWidth} flex-col overflow-hidden rounded-3xl bg-white shadow-2xl`}>
+        {/* HEADER */}
+        <div className={`relative shrink-0 overflow-hidden px-6 py-5 ${headerTone[tone].bg}`}>
+          <div className="pointer-events-none absolute -right-6 -top-10 h-32 w-32 rounded-full bg-white/10" />
+          <div className="pointer-events-none absolute -bottom-12 right-16 h-24 w-24 rounded-full bg-white/10" />
+
+          <div className="relative z-10 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3.5">
+              {onBack && (
+                <button
+                  onClick={onBack}
+                  aria-label="Kembali"
+                  className="-ml-2 rounded-lg p-1.5 text-white/80 transition hover:bg-white/15 hover:text-white"
+                >
+                  <ChevronLeft size={20} />
+                </button>
+              )}
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/20 text-white">
+                {icon}
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-white">{title}</h2>
+                <p className={`text-xs ${headerTone[tone].sub}`}>{subtitle}</p>
+              </div>
+            </div>
+            <button
+              onClick={onClose}
+              aria-label="Tutup"
+              className="rounded-lg p-1.5 text-white/80 transition hover:bg-white/15 hover:text-white"
+            >
+              <X size={20} />
+            </button>
+          </div>
+        </div>
+
+        {/* BODY */}
+        <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">{children}</div>
+
+        {/* FOOTER */}
+        {footer && (
+          <div className="flex shrink-0 justify-end gap-2 border-t border-slate-100 bg-white px-6 py-4">
+            {footer}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SectionLabel({ icon, children }: { icon?: ReactNode; children: ReactNode }) {
+  return (
+    <label className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+      {icon}
+      {children}
+    </label>
+  );
+}
+
+const inputClass =
+  'w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none placeholder:text-slate-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-100';
+
+function SelectField({
+  value,
+  onChange,
+  children,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  children: ReactNode;
+}) {
+  return (
+    <div className="relative">
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={`${inputClass} appearance-none pr-9 text-slate-600`}
+      >
+        {children}
+      </select>
+      <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+    </div>
+  );
+}
+
+function StatusPicker({
+  value,
+  onChange,
+}: {
+  value: StatusRetur | '';
+  onChange: (s: StatusRetur) => void;
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      {STATUS_LIST.map((s) => {
+        const opt = statusOption[s];
+        const Icon = opt.icon;
+        const active = value === s;
+        return (
+          <button
+            key={s}
+            type="button"
+            onClick={() => onChange(s)}
+            className={`relative flex items-center gap-3 rounded-2xl border-2 p-3 text-left transition ${
+              active
+                ? opt.activeCard
+                : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+            }`}
+          >
+            <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${opt.iconBox}`}>
+              <Icon size={18} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-slate-700">{s}</p>
+              <p className="truncate text-[11px] text-slate-400">{opt.desc}</p>
+            </div>
+            {active && (
+              <span
+                className={`absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full text-white ${opt.badge}`}
+              >
+                <Check size={12} strokeWidth={3} />
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function JenisToggle({
+  value,
+  onChange,
+}: {
+  value: JenisRetur;
+  onChange: (j: JenisRetur) => void;
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      {(['ke_supplier', 'dari_pelanggan'] as JenisRetur[]).map((j) => {
+        const opt = jenisOption[j];
+        const Icon = opt.icon;
+        const active = value === j;
+        return (
+          <button
+            key={j}
+            type="button"
+            onClick={() => onChange(j)}
+            className={`flex items-center justify-center gap-2 rounded-xl border-2 px-2 py-2.5 text-xs font-semibold transition ${
+              active
+                ? opt.activeCard
+                : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:bg-slate-50'
+            }`}
+          >
+            <Icon size={14} />
+            {jenisLabel[j]}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function QtyStepper({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (n: number) => void;
+}) {
+  return (
+    <div className="flex items-center overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <button
+        type="button"
+        onClick={() => onChange(Math.max(1, value - 1))}
+        className="px-3 py-3 text-slate-400 hover:bg-slate-50 hover:text-slate-600"
+        aria-label="Kurangi"
+      >
+        <Minus size={14} />
+      </button>
+      <input
+        type="number"
+        min={1}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        style={{ color: '#334155' }}
+        className="w-full min-w-0 bg-transparent py-2.5 text-center text-sm font-semibold outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+      />
+      <span className="pr-1 text-xs font-medium text-slate-400">pcs</span>
+      <button
+        type="button"
+        onClick={() => onChange(value + 1)}
+        className="px-3 py-3 text-slate-400 hover:bg-slate-50 hover:text-slate-600"
+        aria-label="Tambah"
+      >
+        <Plus size={14} />
+      </button>
+    </div>
+  );
+}
+
+function DateField({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div className="relative">
+      <CalendarDays size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-blue-500" />
+      <input
+        type="date"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={{ color: '#334155' }}
+        className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+      />
+    </div>
+  );
+}
+
+function ErrorBox({ message }: { message: string }) {
+  if (!message) return null;
+  return (
+    <p className="rounded-xl bg-rose-50 px-3.5 py-2.5 text-xs font-medium text-rose-600">
+      {message}
+    </p>
+  );
+}
+
+function StokPreview({
+  jenis,
+  stok,
+  jumlah,
+}: {
+  jenis: JenisRetur;
+  stok: number;
+  jumlah: number;
+}) {
+  const hasil = jenis === 'ke_supplier' ? stok - jumlah : stok + jumlah;
+  const warna =
+    jenis === 'ke_supplier'
+      ? 'border-orange-100 bg-orange-50/60 text-orange-600'
+      : 'border-blue-100 bg-blue-50/60 text-blue-600';
+  return (
+    <div className={`flex items-center justify-between rounded-xl border px-4 py-3 ${warna}`}>
+      <span className="text-xs font-semibold">Stok setelah retur</span>
+      <span className="flex items-center gap-2 text-sm font-bold">
+        {stok} pcs
+        <ArrowRight size={14} />
+        {hasil} pcs
+      </span>
+    </div>
+  );
+}
+
+const btnBatal =
+  'rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-600 shadow-sm hover:bg-slate-50 disabled:opacity-60';
+const btnPrimary =
+  'flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-blue-200 hover:bg-blue-700 disabled:opacity-60';
+
+/* ============================================================
+   HALAMAN
+   ============================================================ */
 
 export default function BarangReturPage() {
   const [data, setData] = useState<BarangRetur[]>([]);
@@ -102,7 +466,7 @@ export default function BarangReturPage() {
   // form state (tambah)
   const [supplier, setSupplier] = useState('');
   const [produkBarcode, setProdukBarcode] = useState('');
-  const [jumlah, setJumlah] = useState('');
+  const [jumlah, setJumlah] = useState(1);
   const [alasan, setAlasan] = useState('');
   const [statusForm, setStatusForm] = useState<StatusRetur | ''>('');
   const [mengirim, setMengirim] = useState(false);
@@ -115,7 +479,7 @@ export default function BarangReturPage() {
   const [editJenis, setEditJenis] = useState<JenisRetur>('ke_supplier');
   const [editSupplier, setEditSupplier] = useState('');
   const [editProdukBarcode, setEditProdukBarcode] = useState('');
-  const [editJumlah, setEditJumlah] = useState('');
+  const [editJumlah, setEditJumlah] = useState(1);
   const [editAlasan, setEditAlasan] = useState('');
   const [editStatus, setEditStatus] = useState<StatusRetur | ''>('');
   const [editCatatan, setEditCatatan] = useState('');
@@ -189,7 +553,7 @@ export default function BarangReturPage() {
   function resetForm() {
     setSupplier('');
     setProdukBarcode('');
-    setJumlah('');
+    setJumlah(1);
     setAlasan('');
     setStatusForm('');
     setErrorForm('');
@@ -200,6 +564,10 @@ export default function BarangReturPage() {
     setJenis(null);
     resetForm();
     setShowModal(true);
+  }
+
+  function tutupModal() {
+    setShowModal(false);
   }
 
   function pilihJenis(j: JenisRetur) {
@@ -215,11 +583,11 @@ export default function BarangReturPage() {
       setErrorForm('Pilih supplier tujuan retur dulu.');
       return;
     }
-    if (!produkBarcode || !jumlah || Number(jumlah) <= 0 || !alasan || !statusForm) {
+    if (!produkBarcode || !jumlah || jumlah <= 0 || !alasan || !statusForm) {
       setErrorForm('Lengkapi semua data retur dulu ya.');
       return;
     }
-    if (jenis === 'ke_supplier' && produkTerpilih && Number(jumlah) > produkTerpilih.stok) {
+    if (jenis === 'ke_supplier' && statusForm === 'Selesai' && produkTerpilih && jumlah > produkTerpilih.stok) {
       setErrorForm(`Jumlah melebihi stok yang ada (stok saat ini ${produkTerpilih.stok} pcs).`);
       return;
     }
@@ -233,7 +601,7 @@ export default function BarangReturPage() {
           jenis,
           supplier: jenis === 'ke_supplier' ? supplier : null,
           productBarcode: produkBarcode,
-          qty: Number(jumlah),
+          qty: jumlah,
           alasan,
           status: statusForm,
         }),
@@ -265,7 +633,7 @@ export default function BarangReturPage() {
     setEditJenis(item.jenis);
     setEditSupplier(item.supplier ?? '');
     setEditProdukBarcode(item.productBarcode);
-    setEditJumlah(String(item.qty));
+    setEditJumlah(item.qty);
     setEditAlasan(item.alasan);
     setEditStatus(item.status);
     setEditCatatan(item.catatan ?? '');
@@ -285,7 +653,7 @@ export default function BarangReturPage() {
       setErrorEdit('Pilih supplier tujuan retur dulu.');
       return;
     }
-    if (!editProdukBarcode || !editJumlah || Number(editJumlah) <= 0 || !editAlasan || !editStatus) {
+    if (!editProdukBarcode || !editJumlah || editJumlah <= 0 || !editAlasan || !editStatus) {
       setErrorEdit('Lengkapi semua data retur dulu ya.');
       return;
     }
@@ -301,7 +669,7 @@ export default function BarangReturPage() {
           jenis: editJenis,
           supplier: editJenis === 'ke_supplier' ? editSupplier : null,
           productBarcode: editProdukBarcode,
-          qty: Number(editJumlah),
+          qty: editJumlah,
           alasan: editAlasan,
           status: editStatus,
           catatan: editCatatan || null,
@@ -577,489 +945,277 @@ export default function BarangReturPage() {
 
         {/* MODAL TAMBAH RETUR */}
         {showModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
-            <div className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-2xl">
-
-              {/* Header modal */}
-              <div className="mb-6 flex items-start justify-between">
-                <div className="flex items-center gap-3">
-                  {step === 'form' && (
-                    <button
-                      onClick={() => setStep('pilih_jenis')}
-                      className="mr-1 rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
-                    >
-                      <ChevronLeft size={18} />
-                    </button>
-                  )}
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50">
-                    <Undo2 className="text-blue-600" size={20} />
-                  </div>
-                  <div>
-                    <h2 className="text-lg font-bold text-slate-800">Retur Barang</h2>
-                    <p className="text-xs text-slate-400">
-                      {step === 'pilih_jenis'
-                        ? 'Retur ini ditujukan ke mana?'
-                        : jenis === 'ke_supplier'
-                        ? 'Kembalikan barang ke supplier'
-                        : 'Catat barang yang dikembalikan pelanggan ke toko'}
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setShowModal(false)}
-                  className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                >
-                  <X size={20} />
-                </button>
-              </div>
-
-              {/* STEP 1: PILIH JENIS */}
-              {step === 'pilih_jenis' && (
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <button
-                    onClick={() => pilihJenis('ke_supplier')}
-                    className="group flex flex-col items-start gap-3 rounded-2xl border-2 border-slate-100 p-5 text-left transition hover:border-orange-300 hover:bg-orange-50/40"
-                  >
-                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-orange-50 text-orange-500 transition group-hover:bg-orange-100">
-                      <Truck size={22} />
-                    </div>
-                    <div>
-                      <p className="font-bold text-slate-800">Ke Supplier</p>
-                      <p className="mt-1 text-xs leading-relaxed text-slate-500">
-                        Toko mengembalikan barang ke supplier/distributor.
-                        <span className="mt-1 block font-semibold text-orange-500">Stok berkurang</span>
-                      </p>
-                    </div>
-                  </button>
-
-                  <button
-                    onClick={() => pilihJenis('dari_pelanggan')}
-                    className="group flex flex-col items-start gap-3 rounded-2xl border-2 border-slate-100 p-5 text-left transition hover:border-blue-300 hover:bg-blue-50/40"
-                  >
-                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-50 text-blue-600 transition group-hover:bg-blue-100">
-                      <Store size={22} />
-                    </div>
-                    <div>
-                      <p className="font-bold text-slate-800">Dari Pelanggan</p>
-                      <p className="mt-1 text-xs leading-relaxed text-slate-500">
-                        Pelanggan mengembalikan barang ke toko.
-                        <span className="mt-1 block font-semibold text-blue-600">Stok bertambah</span>
-                      </p>
-                    </div>
-                  </button>
-                </div>
-              )}
-
-              {/* STEP 2: FORM */}
-              {step === 'form' && jenis && (
+          <ModalShell
+            icon={<Undo2 size={22} />}
+            title="Retur Barang"
+            subtitle={
+              step === 'pilih_jenis'
+                ? 'Retur ini ditujukan ke mana?'
+                : jenis === 'ke_supplier'
+                ? 'Kembalikan barang ke supplier'
+                : 'Catat barang yang dikembalikan pelanggan ke toko'
+            }
+            onClose={tutupModal}
+            onBack={step === 'form' ? () => setStep('pilih_jenis') : undefined}
+            footer={
+              step === 'form' ? (
                 <>
-                  <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-                    {/* Supplier - cuma muncul kalau ke_supplier */}
-                    {jenis === 'ke_supplier' && (
-                      <div>
-                        <label className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-slate-700">
-                          <Truck size={14} className="text-blue-500" />
-                          Supplier
-                        </label>
-                        <input
-                          type="text"
-                          value={supplier}
-                          onChange={(e) => setSupplier(e.target.value)}
-                          placeholder="Ketik nama supplier..."
-                          style={{ color: '#334155' }}
-                          className="w-full rounded-xl border border-slate-200 py-2.5 px-3.5 text-sm outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                        />
-                      </div>
-                    )}
-
-                    {/* Produk */}
-                    <div className={jenis === 'dari_pelanggan' ? 'md:col-span-2' : ''}>
-                      <label className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-slate-700">
-                        <Box size={14} className="text-blue-500" />
-                        Produk
-                      </label>
-                      <div className="relative">
-                        <select
-                          value={produkBarcode}
-                          onChange={(e) => setProdukBarcode(e.target.value)}
-                          className="w-full appearance-none rounded-xl border border-slate-200 py-2.5 pl-3.5 pr-9 text-sm text-slate-600 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                        >
-                          <option value="">Pilih Produk</option>
-                          {produkList.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.nama} (stok: {p.stok})
-                            </option>
-                          ))}
-                        </select>
-                        <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                      </div>
-                    </div>
-
-                    {/* Alasan Retur */}
-                    <div>
-                      <label className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-slate-700">
-                        <Tag size={14} className="text-blue-500" />
-                        Alasan Retur
-                      </label>
-                      <div className="relative">
-                        <select
-                          value={alasan}
-                          onChange={(e) => setAlasan(e.target.value)}
-                          className="w-full appearance-none rounded-xl border border-slate-200 py-2.5 pl-3.5 pr-9 text-sm text-slate-600 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                        >
-                          <option value="">Pilih Alasan</option>
-                          {ALASAN_LIST.map((a) => (
-                            <option key={a} value={a}>{a}</option>
-                          ))}
-                        </select>
-                        <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                      </div>
-                    </div>
-
-                    {/* Jumlah Retur */}
-                    <div>
-                      <label className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-slate-700">
-                        <Hash size={14} className="text-blue-500" />
-                        Jumlah Retur
-                      </label>
-                      <div className="relative">
-                        <input
-                          type="number"
-                          min={1}
-                          value={jumlah}
-                          onChange={(e) => setJumlah(e.target.value)}
-                          placeholder="Masukkan jumlah"
-                          style={{ color: '#334155' }}
-                          className="w-full rounded-xl border border-slate-200 py-2.5 pl-3.5 pr-12 text-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                        />
-                        <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-medium text-slate-400">
-                          pcs
-                        </span>
-                      </div>
-                      {jenis === 'ke_supplier' && produkTerpilih && (
-                        <p className="mt-1.5 text-[11px] text-slate-400">
-                          Stok saat ini: {produkTerpilih.stok} pcs
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Preview efek ke stok */}
-                    {produkTerpilih && jumlah && Number(jumlah) > 0 && (
-                      <div className="md:col-span-2 flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50/70 px-4 py-3">
-                        <span className="text-xs font-semibold text-slate-500">Stok setelah retur</span>
-                        <span className="text-sm font-bold text-slate-700">
-                          {produkTerpilih.stok} pcs{' '}
-                          <span className="text-slate-400">→</span>{' '}
-                          {jenis === 'ke_supplier'
-                            ? produkTerpilih.stok - Number(jumlah)
-                            : produkTerpilih.stok + Number(jumlah)}{' '}
-                          pcs
-                        </span>
-                      </div>
-                    )}
-
-                    {/* Status Retur */}
-                    <div className="md:col-span-2">
-                      <label className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-slate-700">
-                        <Ban size={14} className="text-blue-500" />
-                        Status Retur
-                      </label>
-                      <div className="relative md:w-1/2">
-                        <select
-                          value={statusForm}
-                          onChange={(e) => setStatusForm(e.target.value as StatusRetur)}
-                          className="w-full appearance-none rounded-xl border border-slate-200 py-2.5 pl-3.5 pr-9 text-sm text-slate-600 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                        >
-                          <option value="">Pilih Status</option>
-                          {STATUS_LIST.map((s) => (
-                            <option key={s} value={s}>{s}</option>
-                          ))}
-                        </select>
-                        <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                      </div>
-                    </div>
-                  </div>
-
-                  {errorForm && (
-                    <p className="mt-4 rounded-xl bg-rose-50 px-3.5 py-2.5 text-xs font-medium text-rose-600">
-                      {errorForm}
-                    </p>
-                  )}
-
-                  {/* Footer */}
-                  <div className="mt-6 flex justify-end gap-2 border-t border-slate-100 pt-4">
-                    <button
-                      onClick={resetForm}
-                      disabled={mengirim}
-                      className="rounded-xl bg-slate-100 px-5 py-2.5 text-sm font-medium text-slate-500 hover:bg-slate-200 disabled:opacity-60"
-                    >
-                      Reset
-                    </button>
-                    <button
-                      onClick={handleProsesRetur}
-                      disabled={mengirim}
-                      className="flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-blue-200 hover:bg-blue-700 disabled:opacity-60"
-                    >
-                      {mengirim ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
-                      Proses Retur
-                    </button>
-                  </div>
+                  <button onClick={resetForm} disabled={mengirim} className={btnBatal}>
+                    Reset
+                  </button>
+                  <button onClick={handleProsesRetur} disabled={mengirim} className={btnPrimary}>
+                    {mengirim ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
+                    {mengirim ? 'Memproses...' : 'Proses Retur'}
+                  </button>
                 </>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* MODAL EDIT RETUR */}
-        {showEditModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
-            <div className="flex max-h-[85vh] w-full max-w-lg flex-col rounded-2xl bg-white shadow-2xl">
-              {/* Header */}
-              <div className="flex shrink-0 items-start justify-between border-b border-slate-100 p-4">
-                <div className="flex items-center gap-2.5">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50">
-                    <Pencil className="text-blue-600" size={16} />
-                  </div>
-                  <h2 className="text-base font-bold text-slate-800">Edit Barang Retur</h2>
-                </div>
+              ) : undefined
+            }
+          >
+            {/* STEP 1: PILIH JENIS */}
+            {step === 'pilih_jenis' && (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <button
-                  onClick={tutupEdit}
-                  className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                  onClick={() => pilihJenis('ke_supplier')}
+                  className="group flex flex-col items-start gap-3 rounded-2xl border-2 border-slate-200 p-5 text-left transition hover:border-orange-300 hover:bg-orange-50/40"
                 >
-                  <X size={18} />
+                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-orange-50 text-orange-500 transition group-hover:bg-orange-100">
+                    <Truck size={22} />
+                  </div>
+                  <div>
+                    <p className="font-bold text-slate-800">Ke Supplier</p>
+                    <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                      Toko mengembalikan barang ke supplier/distributor.
+                      <span className="mt-1 block font-semibold text-orange-500">Stok berkurang saat Selesai</span>
+                    </p>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => pilihJenis('dari_pelanggan')}
+                  className="group flex flex-col items-start gap-3 rounded-2xl border-2 border-slate-200 p-5 text-left transition hover:border-blue-300 hover:bg-blue-50/40"
+                >
+                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-50 text-blue-600 transition group-hover:bg-blue-100">
+                    <Store size={22} />
+                  </div>
+                  <div>
+                    <p className="font-bold text-slate-800">Dari Pelanggan</p>
+                    <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                      Pelanggan mengembalikan barang ke toko.
+                      <span className="mt-1 block font-semibold text-blue-600">Stok bertambah saat Selesai</span>
+                    </p>
+                  </div>
                 </button>
               </div>
+            )}
 
-              {/* Body (scrollable) */}
-              <div className="grid grid-cols-1 gap-3 overflow-y-auto p-4 md:grid-cols-2">
-                {/* Tanggal */}
-                <div>
-                  <label className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-slate-700">
-                    <CalendarDays size={14} className="text-blue-500" />
-                    Tanggal
-                  </label>
-                  <input
-                    type="date"
-                    value={editTanggal}
-                    onChange={(e) => setEditTanggal(e.target.value)}
-                    style={{ color: '#334155' }}
-                    className="w-full rounded-xl border border-slate-200 py-2 px-3.5 text-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                  />
-                </div>
+            {/* STEP 2: FORM */}
+            {step === 'form' && jenis && (
+              <>
+                <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+                  {jenis === 'ke_supplier' && (
+                    <div>
+                      <SectionLabel icon={<Truck size={13} className="text-blue-500" />}>Supplier</SectionLabel>
+                      <input
+                        type="text"
+                        value={supplier}
+                        onChange={(e) => setSupplier(e.target.value)}
+                        placeholder="Ketik nama supplier..."
+                        style={{ color: '#334155' }}
+                        className={inputClass}
+                      />
+                    </div>
+                  )}
 
-                {/* Jenis */}
-                <div>
-                  <label className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-slate-700">
-                    <Undo2 size={14} className="text-blue-500" />
-                    Jenis
-                  </label>
-                  <div className="relative">
-                    <select
-                      value={editJenis}
-                      onChange={(e) => setEditJenis(e.target.value as JenisRetur)}
-                      className="w-full appearance-none rounded-xl border border-slate-200 py-2 pl-3.5 pr-9 text-sm text-slate-600 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                    >
-                      <option value="ke_supplier">Ke Supplier</option>
-                      <option value="dari_pelanggan">Dari Pelanggan</option>
-                    </select>
-                    <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                  </div>
-                </div>
-
-                {/* Supplier */}
-                {editJenis === 'ke_supplier' && (
-                  <div>
-                    <label className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-slate-700">
-                      <Truck size={14} className="text-blue-500" />
-                      Supplier
-                    </label>
-                    <input
-                      type="text"
-                      value={editSupplier}
-                      onChange={(e) => setEditSupplier(e.target.value)}
-                      placeholder="Ketik nama supplier..."
-                      style={{ color: '#334155' }}
-                      className="w-full rounded-xl border border-slate-200 py-2 px-3.5 text-sm outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                    />
-                  </div>
-                )}
-
-                {/* Produk */}
-                <div className={editJenis === 'dari_pelanggan' ? 'md:col-span-2' : ''}>
-                  <label className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-slate-700">
-                    <Box size={14} className="text-blue-500" />
-                    Produk
-                  </label>
-                  <div className="relative">
-                    <select
-                      value={editProdukBarcode}
-                      onChange={(e) => setEditProdukBarcode(e.target.value)}
-                      className="w-full appearance-none rounded-xl border border-slate-200 py-2 pl-3.5 pr-9 text-sm text-slate-600 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                    >
-                      <option value="">Pilih Produk</option>
+                  <div className={jenis === 'dari_pelanggan' ? 'md:col-span-2' : ''}>
+                    <SectionLabel icon={<Box size={13} className="text-blue-500" />}>Produk</SectionLabel>
+                    <SelectField value={produkBarcode} onChange={setProdukBarcode}>
+                      <option value="">Pilih produk...</option>
                       {produkList.map((p) => (
                         <option key={p.id} value={p.id}>
                           {p.nama} (stok: {p.stok})
                         </option>
                       ))}
-                    </select>
-                    <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    </SelectField>
                   </div>
-                </div>
 
-                {/* Jumlah */}
-                <div>
-                  <label className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-slate-700">
-                    <Hash size={14} className="text-blue-500" />
-                    Jumlah
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="number"
-                      min={1}
-                      value={editJumlah}
-                      onChange={(e) => setEditJumlah(e.target.value)}
-                      style={{ color: '#334155' }}
-                      className="w-full rounded-xl border border-slate-200 py-2 pl-3.5 pr-12 text-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                    />
-                    <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-medium text-slate-400">
-                      pcs
-                    </span>
-                  </div>
-                  {produkTerpilihEdit && (
-                    <p className="mt-1.5 text-[11px] text-slate-400">
-                      Stok saat ini: {produkTerpilihEdit.stok} pcs
-                    </p>
-                  )}
-                </div>
-
-                {/* Alasan */}
-                <div>
-                  <label className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-slate-700">
-                    <Tag size={14} className="text-blue-500" />
-                    Alasan
-                  </label>
-                  <div className="relative">
-                    <select
-                      value={editAlasan}
-                      onChange={(e) => setEditAlasan(e.target.value)}
-                      className="w-full appearance-none rounded-xl border border-slate-200 py-2 pl-3.5 pr-9 text-sm text-slate-600 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                    >
-                      <option value="">Pilih Alasan</option>
+                  <div>
+                    <SectionLabel icon={<Tag size={13} className="text-blue-500" />}>Alasan Retur</SectionLabel>
+                    <SelectField value={alasan} onChange={setAlasan}>
+                      <option value="">Pilih alasan...</option>
                       {ALASAN_LIST.map((a) => (
-                        <option key={a} value={a}>{a}</option>
+                        <option key={a} value={a}>
+                          {a}
+                        </option>
                       ))}
-                    </select>
-                    <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    </SelectField>
+                  </div>
+
+                  <div>
+                    <SectionLabel icon={<Hash size={13} className="text-blue-500" />}>Jumlah Retur</SectionLabel>
+                    <QtyStepper value={jumlah} onChange={setJumlah} />
+                    {jenis === 'ke_supplier' && produkTerpilih && (
+                      <p className="mt-1.5 text-[11px] text-slate-400">
+                        Stok saat ini: {produkTerpilih.stok} pcs
+                      </p>
+                    )}
+                  </div>
+
+                  {produkTerpilih && jumlah > 0 && statusForm === 'Selesai' && (
+                    <div className="md:col-span-2">
+                      <StokPreview jenis={jenis} stok={produkTerpilih.stok} jumlah={jumlah} />
+                    </div>
+                  )}
+
+                  <div className="md:col-span-2">
+                    <SectionLabel icon={<Ban size={13} className="text-blue-500" />}>Status Retur</SectionLabel>
+                    <StatusPicker value={statusForm} onChange={setStatusForm} />
+                    <p className="mt-2 text-[11px] text-slate-400">
+                      Stok produk baru berubah saat status Selesai.
+                    </p>
                   </div>
                 </div>
 
-                {/* Status */}
+                <ErrorBox message={errorForm} />
+              </>
+            )}
+          </ModalShell>
+        )}
+
+        {/* MODAL EDIT RETUR */}
+        {showEditModal && (
+          <ModalShell
+            icon={<Pencil size={22} />}
+            title="Edit Barang Retur"
+            subtitle="Perbarui data retur ini"
+            onClose={tutupEdit}
+            footer={
+              <>
+                <button onClick={tutupEdit} disabled={editMengirim} className={btnBatal}>
+                  Batal
+                </button>
+                <button onClick={handleSimpanPerubahan} disabled={editMengirim} className={btnPrimary}>
+                  {editMengirim ? <Loader2 size={15} className="animate-spin" /> : <Check size={16} />}
+                  {editMengirim ? 'Menyimpan...' : 'Simpan Perubahan'}
+                </button>
+              </>
+            }
+          >
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+              <div>
+                <SectionLabel icon={<CalendarDays size={13} className="text-blue-500" />}>Tanggal</SectionLabel>
+                <DateField value={editTanggal} onChange={setEditTanggal} />
+              </div>
+
+              <div>
+                <SectionLabel icon={<Undo2 size={13} className="text-blue-500" />}>Jenis</SectionLabel>
+                <JenisToggle value={editJenis} onChange={setEditJenis} />
+              </div>
+
+              {editJenis === 'ke_supplier' && (
                 <div>
-                  <label className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-slate-700">
-                    <Ban size={14} className="text-blue-500" />
-                    Status
-                  </label>
-                  <div className="relative">
-                    <select
-                      value={editStatus}
-                      onChange={(e) => setEditStatus(e.target.value as StatusRetur)}
-                      className="w-full appearance-none rounded-xl border border-slate-200 py-2 pl-3.5 pr-9 text-sm text-slate-600 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                    >
-                      <option value="">Pilih Status</option>
-                      {STATUS_LIST.map((s) => (
-                        <option key={s} value={s}>{s}</option>
-                      ))}
-                    </select>
-                    <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                  </div>
-                </div>
-
-                {/* Catatan */}
-                <div className="md:col-span-2">
-                  <label className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-slate-700">
-                    Catatan <span className="font-normal text-slate-400">(opsional)</span>
-                  </label>
-                  <textarea
-                    value={editCatatan}
-                    onChange={(e) => setEditCatatan(e.target.value.slice(0, 200))}
-                    placeholder="Tambahkan catatan jika ada..."
-                    rows={2}
+                  <SectionLabel icon={<Truck size={13} className="text-blue-500" />}>Supplier</SectionLabel>
+                  <input
+                    type="text"
+                    value={editSupplier}
+                    onChange={(e) => setEditSupplier(e.target.value)}
+                    placeholder="Ketik nama supplier..."
                     style={{ color: '#334155' }}
-                    className="w-full resize-none rounded-xl border border-slate-200 py-2 px-3.5 text-sm outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                    className={inputClass}
                   />
-                  <p className="mt-1 text-right text-[11px] text-slate-400">{editCatatan.length}/200</p>
                 </div>
+              )}
 
-                {errorEdit && (
-                  <p className="rounded-xl bg-rose-50 px-3.5 py-2.5 text-xs font-medium text-rose-600 md:col-span-2">
-                    {errorEdit}
+              <div className={editJenis === 'dari_pelanggan' ? 'md:col-span-2' : ''}>
+                <SectionLabel icon={<Box size={13} className="text-blue-500" />}>Produk</SectionLabel>
+                <SelectField value={editProdukBarcode} onChange={setEditProdukBarcode}>
+                  <option value="">Pilih produk...</option>
+                  {produkList.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.nama} (stok: {p.stok})
+                    </option>
+                  ))}
+                </SelectField>
+              </div>
+
+              <div>
+                <SectionLabel icon={<Hash size={13} className="text-blue-500" />}>Jumlah</SectionLabel>
+                <QtyStepper value={editJumlah} onChange={setEditJumlah} />
+                {produkTerpilihEdit && (
+                  <p className="mt-1.5 text-[11px] text-slate-400">
+                    Stok saat ini: {produkTerpilihEdit.stok} pcs
                   </p>
                 )}
               </div>
 
-              {/* Footer (fixed, ga ikut scroll) */}
-              <div className="flex shrink-0 justify-end gap-2 border-t border-slate-100 p-4">
-                <button
-                  onClick={tutupEdit}
-                  disabled={editMengirim}
-                  className="rounded-xl bg-slate-100 px-4 py-2 text-sm font-medium text-slate-500 hover:bg-slate-200 disabled:opacity-60"
-                >
-                  Batal
-                </button>
-                <button
-                  onClick={handleSimpanPerubahan}
-                  disabled={editMengirim}
-                  className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-blue-200 hover:bg-blue-700 disabled:opacity-60"
-                >
-                  {editMengirim && <Loader2 size={15} className="animate-spin" />}
-                  Simpan Perubahan
-                </button>
+              <div>
+                <SectionLabel icon={<Tag size={13} className="text-blue-500" />}>Alasan</SectionLabel>
+                <SelectField value={editAlasan} onChange={setEditAlasan}>
+                  <option value="">Pilih alasan...</option>
+                  {ALASAN_LIST.map((a) => (
+                    <option key={a} value={a}>
+                      {a}
+                    </option>
+                  ))}
+                </SelectField>
+              </div>
+
+              <div className="md:col-span-2">
+                <SectionLabel icon={<Ban size={13} className="text-blue-500" />}>Status</SectionLabel>
+                <StatusPicker value={editStatus} onChange={setEditStatus} />
+                <p className="mt-2 text-[11px] text-slate-400">
+                  Stok produk baru berubah saat status Selesai.
+                </p>
+              </div>
+
+              <div className="md:col-span-2">
+                <SectionLabel>
+                  Catatan <span className="font-normal normal-case tracking-normal text-slate-400">(opsional)</span>
+                </SectionLabel>
+                <textarea
+                  value={editCatatan}
+                  onChange={(e) => setEditCatatan(e.target.value.slice(0, 200))}
+                  placeholder="Tambahkan catatan jika ada..."
+                  rows={2}
+                  style={{ color: '#334155' }}
+                  className={`${inputClass} resize-none`}
+                />
+                <p className="mt-1 text-right text-[11px] text-slate-400">{editCatatan.length}/200</p>
               </div>
             </div>
-          </div>
+
+            <ErrorBox message={errorEdit} />
+          </ModalShell>
         )}
 
         {/* MODAL KONFIRMASI HAPUS */}
         {showHapusModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
-            <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
-              <div className="mb-4 flex items-start justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-50">
-                    <Trash2 className="text-red-500" size={18} />
-                  </div>
-                  <h2 className="text-base font-bold text-slate-800">Hapus Data Retur</h2>
-                </div>
-                <button
-                  onClick={tutupHapus}
-                  className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                >
-                  <X size={18} />
-                </button>
-              </div>
-              <p className="mb-6 text-sm text-slate-500">
-                Apakah kamu yakin ingin menghapus data retur ini? Data yang dihapus tidak dapat dikembalikan.
-              </p>
-              <div className="flex justify-end gap-2">
-                <button
-                  onClick={tutupHapus}
-                  disabled={menghapus}
-                  className="rounded-xl bg-slate-100 px-5 py-2.5 text-sm font-medium text-slate-500 hover:bg-slate-200 disabled:opacity-60"
-                >
+          <ModalShell
+            icon={<Trash2 size={22} />}
+            title="Hapus Data Retur"
+            subtitle="Tindakan ini tidak bisa dibatalkan"
+            tone="red"
+            maxWidth="max-w-md"
+            onClose={tutupHapus}
+            footer={
+              <>
+                <button onClick={tutupHapus} disabled={menghapus} className={btnBatal}>
                   Batal
                 </button>
                 <button
                   onClick={handleKonfirmasiHapus}
                   disabled={menghapus}
-                  className="flex items-center gap-2 rounded-xl bg-red-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-red-200 hover:bg-red-700 disabled:opacity-60"
+                  className="flex items-center gap-2 rounded-xl bg-red-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-red-200 hover:bg-red-700 disabled:opacity-60"
                 >
                   {menghapus ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
-                  Hapus
+                  {menghapus ? 'Menghapus...' : 'Hapus'}
                 </button>
-              </div>
-            </div>
-          </div>
+              </>
+            }
+          >
+            <p className="text-sm leading-relaxed text-slate-500">
+              Apakah kamu yakin ingin menghapus data retur ini? Data yang dihapus tidak dapat dikembalikan.
+            </p>
+          </ModalShell>
         )}
 
         {/* TOAST SUKSES HAPUS */}

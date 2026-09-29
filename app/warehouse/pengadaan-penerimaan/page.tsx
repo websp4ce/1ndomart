@@ -1,62 +1,83 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import SidebarWarehouse from "@/app/components/SidebarWarehouse";
-import HeaderWarehouse from "@/app/components/HeaderWarehouse";
 import {
-  Search,
-  ShoppingCart,
-  Truck,
-  ClipboardCheck,
-  PackageCheck,
-  Plus,
-  X,
-  ChevronRight,
-  CalendarDays,
-  CircleCheck,
-  Clock3,
+  Search, ShoppingCart, Truck, ClipboardCheck, PackageCheck, Plus, X,
+  ChevronRight, CircleCheck, Clock3, Filter as FilterIcon,
+  CheckCircle2, AlertCircle, Building2, Trash2,
 } from "lucide-react";
 
-type Produk = {
-  id: number;
-  kode_produk: string;
-  nama: string;
-  harga: number;
-  stok: number;
-  kategori: string;
+type Produk = { id: number; kode_produk: string; nama: string; harga: number; stok: number; kategori: string };
+type Supplier = { id: number; kode_supplier: string; nama_supplier: string };
+type PO = { id: number; nomor_po: string; tanggal: string; status: string; total: number; nama_supplier: string; jumlah_item: number };
+type Penerimaan = { id: number; nomor_penerimaan: string; nomor_po: string; tanggal: string; status: string; nama_supplier: string; keterangan: string };
+type ItemPO = { produk_id: number; jumlah: number; harga: number };
+
+const API = "/api/warehouse/pengadaan-penerimaan";
+const hariIni = () => new Date().toISOString().split("T")[0];
+const itemKosong = (): ItemPO => ({ produk_id: 0, jumlah: 1, harga: 0 });
+const rupiah = (n: number) => `Rp ${Number(n || 0).toLocaleString("id-ID")}`;
+
+const fmtTanggal = (t: string) => {
+  const d = new Date(t);
+  return isNaN(d.getTime()) ? t : d.toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
 };
 
-type Supplier = {
-  id: number;
-  kode_supplier: string;
-  nama_supplier: string;
+// Kelas Tailwind yang dipakai berulang (sama dengan halaman lain)
+const kartu = "rounded-2xl border border-slate-200 bg-white shadow-[0_4px_20px_rgba(15,23,42,0.05)]";
+const input = "w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-300 focus:border-blue-600 focus:ring-4 focus:ring-blue-100 disabled:bg-slate-50";
+const cari = "rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-3 text-sm outline-none transition placeholder:text-slate-300 focus:border-blue-600 focus:ring-4 focus:ring-blue-100";
+const th = "px-5 py-3.5 font-semibold";
+
+const Garis = ({ className = "" }: { className?: string }) => (
+  <div className={`flex h-1.5 ${className}`}>
+    <span className="flex-1 bg-blue-600" /><span className="flex-1 bg-red-600" /><span className="flex-1 bg-yellow-400" />
+  </div>
+);
+
+function statusStyle(status: string) {
+  if (status === "Selesai") return { cls: "bg-blue-50 text-blue-700", dot: "bg-blue-600" };
+  if (["Menunggu QC", "Dipesan", "Menunggu Penerimaan"].includes(status)) return { cls: "bg-yellow-100 text-yellow-800", dot: "bg-yellow-500" };
+  if (["Diproses", "Sebagian Diterima"].includes(status)) return { cls: "bg-red-50 text-red-600", dot: "bg-red-500" };
+  return { cls: "bg-slate-100 text-slate-600", dot: "bg-slate-400" };
+}
+
+const StatusBadge = ({ status, ikon }: { status: string; ikon?: boolean }) => {
+  const s = statusStyle(status);
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${s.cls}`}>
+      {ikon ? (status === "Selesai" ? <CircleCheck size={12} /> : <Clock3 size={12} />) : <span className={`h-1.5 w-1.5 rounded-full ${s.dot}`} />}
+      {status}
+    </span>
+  );
 };
 
-type PO = {
-  id: number;
-  nomor_po: string;
-  tanggal: string;
-  status: string;
-  total: number;
-  nama_supplier: string;
-  jumlah_item: number;
-};
+const Field = ({ label, children }: { label: string; children: ReactNode }) => (
+  <div>
+    <label className="mb-1.5 block text-sm font-semibold text-slate-600">{label}</label>
+    {children}
+  </div>
+);
 
-type Penerimaan = {
-  id: number;
-  nomor_penerimaan: string;
-  nomor_po: string;
-  tanggal: string;
-  status: string;
-  nama_supplier: string;
-  keterangan: string;
-};
+const Kosong = ({ col, ikon, teks }: { col: number; ikon: ReactNode; teks: string }) => (
+  <tr>
+    <td colSpan={col} className="py-16 text-center">
+      <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-blue-50 text-blue-300">{ikon}</div>
+      <p className="text-sm font-medium text-slate-500">{teks}</p>
+    </td>
+  </tr>
+);
 
-type ItemPO = {
-  produk_id: number;
-  jumlah: number;
-  harga: number;
-};
+const Skeleton = ({ col }: { col: number }) => (
+  <>
+    {[0, 1, 2].map((i) => (
+      <tr key={i} className="border-t border-slate-100">
+        <td colSpan={col} className="px-5 py-4"><div className="h-10 animate-pulse rounded-lg bg-slate-100" /></td>
+      </tr>
+    ))}
+  </>
+);
 
 export default function PengadaanPenerimaanPage() {
   const [tab, setTab] = useState<"po" | "penerimaan">("po");
@@ -66,6 +87,9 @@ export default function PengadaanPenerimaanPage() {
   const [po, setPO] = useState<PO[]>([]);
   const [penerimaan, setPenerimaan] = useState<Penerimaan[]>([]);
 
+  const [memuat, setMemuat] = useState(true);
+  const [loading, setLoading] = useState(false);
+
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("Semua Status");
 
@@ -74,28 +98,23 @@ export default function PengadaanPenerimaanPage() {
 
   const [nomor, setNomor] = useState("");
   const [supplierId, setSupplierId] = useState("");
+  const [tanggal, setTanggal] = useState(hariIni());
+  const [items, setItems] = useState<ItemPO[]>([itemKosong()]);
 
-  const [tanggal, setTanggal] = useState(
-    new Date().toISOString().split("T")[0]
-  );
+  const [toast, setToast] = useState<{ ok: boolean; pesan: string } | null>(null);
+  const info = (ok: boolean, pesan: string) => setToast({ ok, pesan });
 
-  const [items, setItems] = useState<ItemPO[]>([
-    {
-      produk_id: 0,
-      jumlah: 1,
-      harga: 0,
-    },
-  ]);
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3000);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  /* ---------- LOAD DATA ---------- */
 
   async function loadData() {
     try {
-      const res = await fetch(
-        "/api/warehouse/pengadaan-penerimaan",
-        {
-          cache: "no-store",
-        }
-      );
-
+      const res = await fetch(API, { cache: "no-store" });
       const data = await res.json();
 
       if (data.success) {
@@ -103,9 +122,14 @@ export default function PengadaanPenerimaanPage() {
         setSupplier(data.supplier || []);
         setPO(data.po || []);
         setPenerimaan(data.penerimaan || []);
+      } else {
+        info(false, data.message || "Gagal mengambil data.");
       }
     } catch (e) {
       console.error("Gagal mengambil data:", e);
+      info(false, "Tidak dapat terhubung ke server.");
+    } finally {
+      setMemuat(false);
     }
   }
 
@@ -113,1134 +137,516 @@ export default function PengadaanPenerimaanPage() {
     loadData();
   }, []);
 
-  function tambahItem() {
-    setItems([
-      ...items,
-      {
-        produk_id: 0,
-        jumlah: 1,
-        harga: 0,
-      },
-    ]);
-  }
+  /* ---------- ITEM PO ---------- */
 
-  function hapusItem(i: number) {
-    if (items.length > 1) {
-      setItems(items.filter((_, x) => x !== i));
-    }
-  }
+  const tambahItem = () => setItems([...items, itemKosong()]);
 
-  function ubahProduk(i: number, id: number) {
+  const hapusItem = (i: number) => {
+    if (items.length > 1) setItems(items.filter((_, x) => x !== i));
+  };
+
+  const ubahProduk = (i: number, id: number) => {
     const p = produk.find((x) => x.id === id);
-
     const data = [...items];
-
-    data[i] = {
-      ...data[i],
-      produk_id: id,
-      harga: p?.harga || 0,
-    };
-
+    data[i] = { ...data[i], produk_id: id, harga: p?.harga || 0 };
     setItems(data);
-  }
+  };
 
-  async function simpanPO() {
-    if (!nomor || !supplierId || !tanggal) {
-      return alert("Lengkapi data PO.");
-    }
+  const ubahItem = (i: number, k: "jumlah" | "harga", v: number) => {
+    const data = [...items];
+    data[i] = { ...data[i], [k]: v };
+    setItems(data);
+  };
 
-    const validItems = items.filter(
-      (x) => x.produk_id > 0 && x.jumlah > 0
-    );
+  const totalPO = items.reduce((t, x) => t + (x.produk_id > 0 ? x.jumlah * x.harga : 0), 0);
 
-    if (!validItems.length) {
-      return alert("Tambahkan minimal satu produk.");
-    }
+  const resetForm = () => {
+    setNomor("");
+    setSupplierId("");
+    setTanggal(hariIni());
+    setItems([itemKosong()]);
+  };
+
+  const tutupModal = () => {
+    setShowModal(false);
+    resetForm();
+  };
+
+  /* ---------- SIMPAN PO ---------- */
+
+  async function simpanPO(e: React.FormEvent) {
+    e.preventDefault();
+
+    if (!nomor.trim() || !supplierId || !tanggal) return info(false, "Lengkapi data PO.");
+
+    const validItems = items.filter((x) => x.produk_id > 0 && x.jumlah > 0);
+    if (!validItems.length) return info(false, "Tambahkan minimal satu produk.");
 
     try {
-      const res = await fetch(
-        "/api/warehouse/pengadaan-penerimaan",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            tipe: "po",
-            nomor_po: nomor,
-            supplier_id: supplierId,
-            tanggal,
-            items: validItems,
-          }),
-        }
-      );
+      setLoading(true);
+      const res = await fetch(API, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tipe: "po",
+          nomor_po: nomor.trim(),
+          supplier_id: supplierId,
+          tanggal,
+          items: validItems,
+        }),
+      });
 
       const data = await res.json();
+      if (!res.ok) return info(false, data.message || "Gagal menyimpan Purchase Order.");
 
-      if (!res.ok) {
-        return alert(data.message);
-      }
-
-      alert(data.message);
-
-      setShowModal(false);
-      setNomor("");
-      setSupplierId("");
-
-      setItems([
-        {
-          produk_id: 0,
-          jumlah: 1,
-          harga: 0,
-        },
-      ]);
-
-      loadData();
-    } catch (e) {
-      console.error(e);
-      alert("Gagal menyimpan Purchase Order.");
+      info(true, data.message || "Purchase Order berhasil disimpan.");
+      tutupModal();
+      await loadData();
+    } catch (err) {
+      console.error(err);
+      info(false, "Gagal menyimpan Purchase Order.");
+    } finally {
+      setLoading(false);
     }
   }
+
+  /* ---------- BUAT PENERIMAAN ---------- */
 
   async function buatPenerimaan() {
     if (!selectedPO) return;
 
-    const nomorPenerimaan = `PB-${new Date().getFullYear()}-${String(
-      penerimaan.length + 1
-    ).padStart(3, "0")}`;
+    const nomorPenerimaan = `PB-${new Date().getFullYear()}-${String(penerimaan.length + 1).padStart(3, "0")}`;
 
     try {
-      const res = await fetch(
-        "/api/warehouse/pengadaan-penerimaan",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            tipe: "penerimaan",
-            nomor_penerimaan: nomorPenerimaan,
-            po_id: selectedPO.id,
-            tanggal: new Date().toISOString().split("T")[0],
-            keterangan: "Penerimaan dari PO",
-          }),
-        }
-      );
+      setLoading(true);
+      const res = await fetch(API, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tipe: "penerimaan",
+          nomor_penerimaan: nomorPenerimaan,
+          po_id: selectedPO.id,
+          tanggal: hariIni(),
+          keterangan: "Penerimaan dari PO",
+        }),
+      });
 
       const data = await res.json();
+      if (!res.ok) return info(false, data.message || "Gagal membuat penerimaan.");
 
-      if (!res.ok) {
-        return alert(data.message);
-      }
-
-      alert(data.message);
-
+      info(true, data.message || "Penerimaan berhasil dibuat.");
       setSelectedPO(null);
-
-      loadData();
-    } catch (e) {
-      console.error(e);
-      alert("Gagal membuat penerimaan.");
+      await loadData();
+    } catch (err) {
+      console.error(err);
+      info(false, "Gagal membuat penerimaan.");
+    } finally {
+      setLoading(false);
     }
   }
 
-  const filteredPO = useMemo(() => {
-    return po.filter((x) => {
-      const cocokSearch = `${x.nomor_po} ${x.nama_supplier}`
-        .toLowerCase()
-        .includes(search.toLowerCase());
+  /* ---------- FILTER ---------- */
 
-      const cocokStatus =
-        statusFilter === "Semua Status" ||
-        x.status === statusFilter;
+  const kw = search.toLowerCase().trim();
 
-      return cocokSearch && cocokStatus;
-    });
-  }, [po, search, statusFilter]);
+  const filteredPO = useMemo(
+    () =>
+      po.filter(
+        (x) =>
+          `${x.nomor_po} ${x.nama_supplier}`.toLowerCase().includes(kw) &&
+          (statusFilter === "Semua Status" || x.status === statusFilter)
+      ),
+    [po, kw, statusFilter]
+  );
 
-  const filteredPenerimaan = useMemo(() => {
-    return penerimaan.filter((x) => {
-      const cocokSearch = `${x.nomor_penerimaan} ${x.nomor_po} ${x.nama_supplier}`
-        .toLowerCase()
-        .includes(search.toLowerCase());
+  const filteredPenerimaan = useMemo(
+    () =>
+      penerimaan.filter(
+        (x) =>
+          `${x.nomor_penerimaan} ${x.nomor_po} ${x.nama_supplier}`.toLowerCase().includes(kw) &&
+          (statusFilter === "Semua Status" || x.status === statusFilter)
+      ),
+    [penerimaan, kw, statusFilter]
+  );
 
-      const cocokStatus =
-        statusFilter === "Semua Status" ||
-        x.status === statusFilter;
+  const menungguPenerimaan = po.filter((x) => x.status === "Dipesan" || x.status === "Sebagian Diterima").length;
+  const dalamQC = penerimaan.filter((x) => x.status === "Menunggu QC" || x.status === "Diproses").length;
 
-      return cocokSearch && cocokStatus;
-    });
-  }, [penerimaan, search, statusFilter]);
+  const ringkasan = [
+    { label: "Total PO", nilai: po.length, note: "Aktif & selesai", icon: ClipboardCheck },
+    { label: "Menunggu penerimaan", nilai: menungguPenerimaan, note: "PO belum diterima", icon: PackageCheck },
+    { label: "Total penerimaan", nilai: penerimaan.length, note: "Barang telah diterima", icon: Truck },
+    { label: "Dalam proses QC", nilai: dalamQC, note: "Menunggu quality check", icon: ClipboardCheck },
+  ];
 
-  const menungguPenerimaan = po.filter(
-    (x) =>
-      x.status === "Dipesan" ||
-      x.status === "Sebagian Diterima"
-  ).length;
+  const gantiTab = (t: "po" | "penerimaan") => {
+    setTab(t);
+    setSearch("");
+    setStatusFilter("Semua Status");
+    if (t === "po") setSelectedPO(null);
+  };
 
-  const dalamQC = penerimaan.filter(
-    (x) =>
-      x.status === "Menunggu QC" ||
-      x.status === "Diproses"
-  ).length;
-
-  function statusClass(status: string) {
-    if (status === "Selesai") {
-      return "bg-emerald-50 text-emerald-600";
-    }
-
-    if (
-      [
-        "Menunggu QC",
-        "Dipesan",
-        "Menunggu Penerimaan",
-      ].includes(status)
-    ) {
-      return "bg-amber-50 text-amber-600";
-    }
-
-    if (
-      [
-        "Diproses",
-        "Sebagian Diterima",
-      ].includes(status)
-    ) {
-      return "bg-blue-50 text-blue-600";
-    }
-
-    return "bg-slate-100 text-slate-600";
-  }
+  const opsiStatus = tab === "po" ? ["Draft", "Dipesan", "Sebagian Diterima", "Selesai"] : ["Menunggu QC", "Diproses", "Selesai"];
+  const jumlahTampil = tab === "po" ? filteredPO.length : filteredPenerimaan.length;
+  const jumlahSemua = tab === "po" ? po.length : penerimaan.length;
 
   return (
-    <div className="flex min-h-screen bg-[#f7f9fc] text-slate-800">
+    <div className="flex min-h-screen bg-white text-slate-800">
+      <style>{`
+        @keyframes munculModal { from { opacity: 0; transform: translateY(12px) scale(.98); } to { opacity: 1; transform: none; } }
+        @keyframes masukToast { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
+        @keyframes naikMuncul { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+        @keyframes melayang { 0%, 100% { transform: translateY(0) rotate(-6deg); } 50% { transform: translateY(-8px) rotate(-3deg); } }
+        .anim-modal { animation: munculModal .22s ease-out; }
+        .anim-toast { animation: masukToast .25s ease-out; }
+        .anim-naik { animation: naikMuncul .5s cubic-bezier(.22,1,.36,1) both; }
+        .anim-melayang { animation: melayang 5s ease-in-out infinite; }
+        @media (prefers-reduced-motion: reduce) { .anim-modal, .anim-toast, .anim-naik, .anim-melayang { animation: none; } }
+      `}</style>
+
       <SidebarWarehouse />
 
       <main className="min-w-0 flex-1">
-        <HeaderWarehouse
-          title="Pengadaan & Penerimaan"
-          subtitle="Warehouse"
-        />
-
-        <div className="p-5 md:p-7">
-
+        <div className="mx-auto max-w-[1320px] space-y-8 px-4 py-8 sm:px-6 lg:px-8">
           {/* HERO */}
-          <section className="relative mb-5 overflow-hidden rounded-[22px] bg-gradient-to-r from-[#2161ff] via-[#168cf0] to-[#12b8cf] px-6 py-5 text-white shadow-lg shadow-blue-100 sm:px-7 sm:py-6">
-            <div className="relative z-10 max-w-3xl">
-              <p className="mb-1 text-[11px] font-medium text-blue-100">
-                Warehouse Procurement
-              </p>
+          <section className="anim-naik relative overflow-hidden rounded-3xl bg-gradient-to-br from-blue-900 via-blue-800 to-blue-700 px-7 py-8 text-white shadow-xl shadow-blue-100">
+            <div className="pointer-events-none absolute -right-16 -top-20 h-64 w-64 rounded-full bg-yellow-400/20" />
+            <div className="pointer-events-none absolute -bottom-24 right-40 h-56 w-56 rounded-full bg-red-500/20" />
+            <ShoppingCart className="anim-melayang pointer-events-none absolute bottom-6 right-8 hidden h-28 w-28 text-white/15 sm:block" />
 
-              <h2 className="text-[25px] font-bold leading-tight tracking-tight sm:text-[30px]">
-                Pengadaan & Penerimaan
-              </h2>
+            <div className="relative">
+              <div className="flex flex-wrap items-start justify-between gap-5">
+                <div>
+                  <p className="text-xs text-blue-200">Warehouse › Pengadaan & Penerimaan</p>
+                  <h1 className="mt-2 text-3xl font-bold tracking-tight md:text-4xl">Pengadaan & Penerimaan</h1>
+                  <p className="mt-2 max-w-lg text-sm leading-relaxed text-blue-100">
+                    Kelola pengadaan barang dari supplier dan penerimaan barang masuk ke gudang Indomart dengan mudah dan terpantau.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowModal(true)}
+                  className="flex items-center gap-2 rounded-xl bg-yellow-400 px-6 py-3.5 text-sm font-bold text-blue-900 shadow-lg shadow-blue-950/20 transition hover:bg-yellow-300 focus:outline-none focus:ring-4 focus:ring-yellow-200/60"
+                >
+                  <Plus size={18} strokeWidth={2.5} /> Buat PO baru
+                </button>
+              </div>
 
-              <p className="mt-1.5 max-w-2xl text-[11px] leading-5 text-blue-50 sm:text-xs">
-                Kelola proses pengadaan barang dari supplier dan
-                penerimaan barang masuk ke gudang dengan mudah dan
-                terpantau.
-              </p>
-            </div>
-
-            <div className="absolute -right-8 -top-14 h-36 w-36 rounded-full bg-white/10" />
-
-            <div className="absolute -bottom-20 right-24 h-44 w-44 rounded-full bg-white/10" />
-
-            <div className="pointer-events-none absolute right-8 top-1/2 hidden -translate-y-1/2 lg:block">
-              <div className="flex h-[76px] w-[76px] items-center justify-center rounded-[20px] bg-white/15">
-                <ShoppingCart size={38} strokeWidth={1.6} />
+              <div className="mt-7 grid grid-cols-2 gap-3 lg:grid-cols-4">
+                {ringkasan.map(({ label, nilai, note, icon: Icon }) => (
+                  <div key={label} className="rounded-2xl border border-white/15 bg-white/10 p-4 backdrop-blur">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm text-blue-100">{label}</p>
+                      <Icon size={17} className="text-yellow-300" />
+                    </div>
+                    <p className="mt-2 text-3xl font-bold tracking-tight">{memuat ? "..." : nilai.toLocaleString("id-ID")}</p>
+                    <p className="mt-0.5 text-[11px] text-blue-200">{note}</p>
+                  </div>
+                ))}
               </div>
             </div>
           </section>
 
-          <div className="space-y-5">
+          {/* DAFTAR */}
+          <section className={`${kartu} anim-naik overflow-hidden`} style={{ animationDelay: "120ms" }}>
+            <div className="flex flex-col gap-4 border-b border-slate-100 p-5">
+              <div>
+                <h2 className="text-lg font-bold text-blue-900">
+                  {tab === "po" ? "Data Purchase Order" : "Data Penerimaan Barang"}
+                </h2>
+                <p className="mt-0.5 text-xs text-slate-400">
+                  {tab === "po" ? "Daftar pesanan barang ke supplier" : "Daftar barang yang telah diterima"} · Menampilkan {jumlahTampil} dari {jumlahSemua} data
+                </p>
+              </div>
 
-            {/* STATISTIK */}
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <StatCard
-                icon={<ClipboardCheck size={19} />}
-                label="Total PO"
-                value={po.length}
-                note="Aktif & selesai"
-                color="blue"
-              />
+              <div className="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-center">
+                {/* TAB */}
+                <div className="flex w-full rounded-xl bg-blue-50/70 p-1 md:w-auto">
+                  {([
+                    { id: "po", label: "Purchase order", icon: ShoppingCart },
+                    { id: "penerimaan", label: "Penerimaan barang", icon: Truck },
+                  ] as const).map(({ id, label, icon: Icon }) => (
+                    <button
+                      key={id}
+                      onClick={() => gantiTab(id)}
+                      className={`flex flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-lg px-4 py-2 text-sm font-semibold transition md:flex-none ${
+                        tab === id ? "bg-blue-700 text-white shadow-md shadow-blue-100" : "text-slate-500 hover:text-blue-700"
+                      }`}
+                    >
+                      <Icon size={15} /> {label}
+                    </button>
+                  ))}
+                </div>
 
-              <StatCard
-                icon={<PackageCheck size={19} />}
-                label="Menunggu Penerimaan"
-                value={menungguPenerimaan}
-                note="PO belum diterima"
-                color="orange"
-              />
-
-              <StatCard
-                icon={<Truck size={19} />}
-                label="Total Penerimaan"
-                value={penerimaan.length}
-                note="Barang telah diterima"
-                color="green"
-              />
-
-              <StatCard
-                icon={<ClipboardCheck size={19} />}
-                label="Dalam Proses QC"
-                value={dalamQC}
-                note="Menunggu quality check"
-                color="purple"
-              />
-            </div>
-
-            {/* TAB */}
-            <div className="rounded-2xl border border-blue-100 bg-white p-1.5 shadow-sm">
-              <div className="flex w-fit rounded-xl bg-slate-50 p-1">
-
-                <button
-                  onClick={() => {
-                    setTab("po");
-                    setSelectedPO(null);
-                    setSearch("");
-                    setStatusFilter("Semua Status");
-                  }}
-                  className={`flex items-center gap-2 rounded-lg px-4 py-2.5 text-xs font-bold transition ${
-                    tab === "po"
-                      ? "bg-blue-600 text-white shadow-md shadow-blue-100"
-                      : "text-slate-500 hover:text-blue-600"
-                  }`}
-                >
-                  <ShoppingCart size={15} />
-                  Purchase Order
-                </button>
-
-                <button
-                  onClick={() => {
-                    setTab("penerimaan");
-                    setSearch("");
-                    setStatusFilter("Semua Status");
-                  }}
-                  className={`flex items-center gap-2 rounded-lg px-4 py-2.5 text-xs font-bold transition ${
-                    tab === "penerimaan"
-                      ? "bg-blue-600 text-white shadow-md shadow-blue-100"
-                      : "text-slate-500 hover:text-blue-600"
-                  }`}
-                >
-                  <Truck size={15} />
-                  Penerimaan Barang
-                </button>
-
+                {/* SEARCH + FILTER */}
+                <div className="relative md:min-w-[220px] md:flex-1">
+                  <Search size={17} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder={tab === "po" ? "Cari nomor PO, supplier..." : "Cari penerimaan, PO..."}
+                    className={`${cari} w-full`}
+                  />
+                </div>
+                <div className="relative md:w-52">
+                  <FilterIcon size={15} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
+                  <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={`${cari} w-full text-slate-600`}>
+                    <option>Semua Status</option>
+                    {opsiStatus.map((x) => <option key={x}>{x}</option>)}
+                  </select>
+                </div>
               </div>
             </div>
 
-            {/* ========================= */}
-            {/* PURCHASE ORDER */}
-            {/* ========================= */}
-            {tab === "po" && (
-              <section className="overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm">
-
-                <div className="flex flex-col gap-3 border-b border-slate-100 p-5 sm:flex-row sm:items-center sm:justify-between">
-
-                  <div className="flex items-center gap-3">
-                    <IconBox color="blue">
-                      <ShoppingCart size={19} />
-                    </IconBox>
-
-                    <div>
-                      <h3 className="text-sm font-extrabold">
-                        Data Purchase Order
-                      </h3>
-
-                      <p className="mt-1 text-[10px] text-slate-400">
-                        Daftar pesanan barang ke supplier
-                      </p>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => setShowModal(true)}
-                    className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white shadow-md shadow-blue-100 hover:bg-blue-700"
-                  >
-                    <Plus size={15} />
-                    Buat PO Baru
-                  </button>
-
-                </div>
-
-                <Filter
-                  search={search}
-                  setSearch={setSearch}
-                  status={statusFilter}
-                  setStatus={setStatusFilter}
-                  placeholder="Cari nomor PO, supplier..."
-                  options={[
-                    "Draft",
-                    "Dipesan",
-                    "Sebagian Diterima",
-                    "Selesai",
-                  ]}
-                />
-
-                <div className="overflow-x-auto px-5 pb-5">
-                  <table className="w-full min-w-[700px]">
-
-                    <thead>
-                      <tr className="border-y border-slate-100 bg-slate-50 text-left">
-                        {[
-                          "No. PO",
-                          "Tanggal",
-                          "Supplier",
-                          "Item",
-                          "Status",
-                          "Aksi",
-                        ].map((x) => (
-                          <th
-                            key={x}
-                            className="px-4 py-3 text-[10px] font-bold text-slate-500"
-                          >
-                            {x}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-
-                    <tbody>
-                      {filteredPO.map((item) => (
-                        <tr
-                          key={item.id}
-                          className="border-b border-slate-50 hover:bg-blue-50/40"
-                        >
-                          <td className="px-4 py-4 text-xs font-extrabold text-blue-600">
-                            {item.nomor_po}
-                          </td>
-
-                          <td className="px-4 py-4 text-[11px] text-slate-500">
-                            {item.tanggal}
-                          </td>
-
-                          <td className="px-4 py-4 text-[11px] font-semibold">
-                            {item.nama_supplier}
-                          </td>
-
-                          <td className="px-4 py-4 text-[11px] text-slate-500">
-                            {item.jumlah_item}
-                          </td>
-
-                          <td className="px-4 py-4">
-                            <span
-                              className={`rounded-full px-2.5 py-1 text-[9px] font-bold ${statusClass(
-                                item.status
-                              )}`}
-                            >
-                              {item.status}
-                            </span>
-                          </td>
-
-                          <td className="px-4 py-4">
+            <div className="overflow-x-auto">
+              {/* PURCHASE ORDER */}
+              {tab === "po" && (
+                <table className="w-full min-w-[760px] text-left">
+                  <thead>
+                    <tr className="border-b-2 border-yellow-300 bg-blue-50/70 text-sm text-blue-900">
+                      {["No. PO", "Tanggal", "Supplier", "Item", "Status"].map((h) => <th key={h} className={th}>{h}</th>)}
+                      <th className={`${th} text-center`}>Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {memuat && <Skeleton col={6} />}
+                    {!memuat && filteredPO.map((item) => (
+                      <tr key={item.id} className="border-t border-slate-100 transition hover:bg-blue-50/40">
+                        <td className="whitespace-nowrap px-5 py-4 font-mono text-sm font-semibold text-blue-800">{item.nomor_po}</td>
+                        <td className="whitespace-nowrap px-5 py-4 text-sm text-slate-600">{fmtTanggal(item.tanggal)}</td>
+                        <td className="px-5 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-700 text-white"><Building2 size={17} /></div>
+                            <span className="text-sm font-semibold text-slate-800">{item.nama_supplier}</span>
+                          </div>
+                        </td>
+                        <td className="px-5 py-4"><span className="rounded-full bg-yellow-100 px-3 py-1 text-sm font-bold text-yellow-800">{item.jumlah_item}</span></td>
+                        <td className="px-5 py-4"><StatusBadge status={item.status} /></td>
+                        <td className="px-5 py-4">
+                          <div className="flex justify-center">
                             <button
-                              onClick={() => {
-                                setSelectedPO(item);
-                                setTab("penerimaan");
-                                setSearch("");
-                                setStatusFilter("Semua Status");
-                              }}
-                              className="rounded-lg border border-slate-200 p-2 text-slate-400 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-600"
+                              onClick={() => { gantiTab("penerimaan"); setSelectedPO(item); }}
+                              title="Buat penerimaan dari PO ini"
+                              className="flex items-center gap-1 rounded-lg p-2 text-blue-700 transition hover:bg-blue-100"
                             >
-                              <ChevronRight size={14} />
+                              <ChevronRight size={18} />
                             </button>
-                          </td>
-                        </tr>
-                      ))}
-
-                      {!filteredPO.length && (
-                        <Empty
-                          col={6}
-                          text="Belum ada Purchase Order."
-                        />
-                      )}
-                    </tbody>
-
-                  </table>
-                </div>
-              </section>
-            )}
-
-            {/* ========================= */}
-            {/* PENERIMAAN BARANG */}
-            {/* ========================= */}
-            {tab === "penerimaan" && (
-              <section className="overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm">
-
-                <div className="flex flex-col gap-3 border-b border-slate-100 p-5 sm:flex-row sm:items-center sm:justify-between">
-
-                  <div className="flex items-center gap-3">
-                    <IconBox color="green">
-                      <PackageCheck size={19} />
-                    </IconBox>
-
-                    <div>
-                      <h3 className="text-sm font-extrabold">
-                        Data Penerimaan Barang
-                      </h3>
-
-                      <p className="mt-1 text-[10px] text-slate-400">
-                        Daftar barang yang telah diterima
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="hidden rounded-xl bg-emerald-50 px-3 py-2 text-[10px] font-bold text-emerald-600 sm:block">
-                    {penerimaan.length} Penerimaan
-                  </div>
-
-                </div>
-
-                <Filter
-                  search={search}
-                  setSearch={setSearch}
-                  status={statusFilter}
-                  setStatus={setStatusFilter}
-                  placeholder="Cari penerimaan, PO..."
-                  options={[
-                    "Menunggu QC",
-                    "Diproses",
-                    "Selesai",
-                  ]}
-                />
-
-                <div className="overflow-x-auto px-5 pb-5">
-                  <table className="w-full min-w-[600px]">
-
-                    <thead>
-                      <tr className="border-y border-slate-100 bg-slate-50 text-left">
-                        {[
-                          "No. Penerimaan",
-                          "PO",
-                          "Supplier",
-                          "Status",
-                        ].map((x) => (
-                          <th
-                            key={x}
-                            className="px-4 py-3 text-[10px] font-bold text-slate-500"
-                          >
-                            {x}
-                          </th>
-                        ))}
+                          </div>
+                        </td>
                       </tr>
-                    </thead>
+                    ))}
+                    {!memuat && !filteredPO.length && (
+                      <Kosong col={6} ikon={<ShoppingCart size={30} />} teks={search || statusFilter !== "Semua Status" ? "PO tidak ditemukan" : "Belum ada Purchase Order"} />
+                    )}
+                  </tbody>
+                </table>
+              )}
 
-                    <tbody>
-                      {filteredPenerimaan.map((item) => (
-                        <tr
-                          key={item.id}
-                          className="border-b border-slate-50 hover:bg-blue-50/40"
-                        >
-                          <td className="px-4 py-4 text-xs font-extrabold text-blue-600">
-                            {item.nomor_penerimaan}
-                          </td>
+              {/* PENERIMAAN */}
+              {tab === "penerimaan" && (
+                <table className="w-full min-w-[640px] text-left">
+                  <thead>
+                    <tr className="border-b-2 border-yellow-300 bg-blue-50/70 text-sm text-blue-900">
+                      {["No. Penerimaan", "PO", "Supplier", "Status"].map((h) => <th key={h} className={th}>{h}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {memuat && <Skeleton col={4} />}
+                    {!memuat && filteredPenerimaan.map((item) => (
+                      <tr key={item.id} className="border-t border-slate-100 transition hover:bg-blue-50/40">
+                        <td className="whitespace-nowrap px-5 py-4 font-mono text-sm font-semibold text-blue-800">{item.nomor_penerimaan}</td>
+                        <td className="whitespace-nowrap px-5 py-4 text-sm font-semibold text-slate-700">{item.nomor_po}</td>
+                        <td className="px-5 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-600 text-white"><Truck size={17} /></div>
+                            <span className="text-sm font-semibold text-slate-800">{item.nama_supplier}</span>
+                          </div>
+                        </td>
+                        <td className="px-5 py-4"><StatusBadge status={item.status} ikon /></td>
+                      </tr>
+                    ))}
+                    {!memuat && !filteredPenerimaan.length && (
+                      <Kosong col={4} ikon={<Truck size={30} />} teks={search || statusFilter !== "Semua Status" ? "Penerimaan tidak ditemukan" : "Belum ada penerimaan barang"} />
+                    )}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </section>
 
-                          <td className="px-4 py-4 text-[11px] font-semibold">
-                            {item.nomor_po}
-                          </td>
-
-                          <td className="px-4 py-4 text-[11px] text-slate-500">
-                            {item.nama_supplier}
-                          </td>
-
-                          <td className="px-4 py-4">
-                            <span
-                              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[9px] font-bold ${statusClass(
-                                item.status
-                              )}`}
-                            >
-                              {item.status === "Selesai" ? (
-                                <CircleCheck size={11} />
-                              ) : (
-                                <Clock3 size={11} />
-                              )}
-
-                              {item.status}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-
-                      {!filteredPenerimaan.length && (
-                        <Empty
-                          col={4}
-                          text="Belum ada penerimaan barang."
-                        />
-                      )}
-                    </tbody>
-
-                  </table>
+          {/* DETAIL PO */}
+          {selectedPO && tab === "penerimaan" && (
+            <section className={`${kartu} anim-naik overflow-hidden border-yellow-300`}>
+              <Garis />
+              <div className="flex flex-col gap-4 border-b border-slate-100 bg-gradient-to-r from-yellow-50 to-white p-5 md:flex-row md:items-center md:justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-yellow-400 text-blue-900 shadow-md shadow-yellow-100"><Truck size={22} /></div>
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="font-mono text-base font-bold text-blue-900">{selectedPO.nomor_po}</h3>
+                      <StatusBadge status="Menunggu Penerimaan" />
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500">{fmtTanggal(selectedPO.tanggal)} • {selectedPO.nama_supplier}</p>
+                  </div>
                 </div>
-              </section>
-            )}
 
-            {/* ========================= */}
-            {/* DETAIL PO */}
-            {/* ========================= */}
-            {selectedPO && tab === "penerimaan" && (
-              <section className="mt-5 overflow-hidden rounded-3xl border border-orange-100 bg-white shadow-sm">
+                <div className="flex gap-2">
+                  <button
+                    onClick={buatPenerimaan}
+                    disabled={loading}
+                    className="flex items-center gap-2 rounded-xl bg-blue-700 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-blue-100 transition hover:bg-blue-800 disabled:opacity-60"
+                  >
+                    <PackageCheck size={16} /> {loading ? "Memproses..." : "Konfirmasi penerimaan"}
+                  </button>
+                  <button onClick={() => setSelectedPO(null)} className="rounded-xl border border-slate-200 bg-white p-2.5 text-slate-400 transition hover:bg-slate-50 hover:text-slate-600">
+                    <X size={18} />
+                  </button>
+                </div>
+              </div>
 
-                <div className="flex flex-col gap-3 border-b border-orange-100 bg-gradient-to-r from-orange-50 to-white p-5 md:flex-row md:items-center md:justify-between">
-
-                  <div className="flex items-center gap-4">
-                    <IconBox color="orange">
-                      <Truck size={21} />
-                    </IconBox>
-
+              <div className="grid grid-cols-2 gap-4 p-5 sm:grid-cols-4">
+                {[
+                  { label: "Total item", nilai: selectedPO.jumlah_item, icon: ShoppingCart, tone: "bg-blue-700 text-white" },
+                  { label: "Diterima", nilai: 0, icon: PackageCheck, tone: "bg-red-600 text-white" },
+                  { label: "Dalam QC", nilai: 0, icon: ClipboardCheck, tone: "bg-yellow-400 text-blue-900" },
+                  { label: "Sisa", nilai: selectedPO.jumlah_item, icon: Truck, tone: "bg-blue-700 text-white" },
+                ].map(({ label, nilai, icon: Icon, tone }) => (
+                  <div key={label} className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-white p-4">
+                    <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${tone}`}><Icon size={17} /></div>
                     <div>
-                      <div className="flex flex-wrap items-center gap-2">
-
-                        <h3 className="text-sm font-extrabold">
-                          {selectedPO.nomor_po}
-                        </h3>
-
-                        <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[9px] font-bold text-amber-600">
-                          Menunggu Penerimaan
-                        </span>
-
-                      </div>
-
-                      <p className="mt-1 text-[10px] text-slate-400">
-                        {selectedPO.tanggal} •{" "}
-                        {selectedPO.nama_supplier}
-                      </p>
+                      <p className="text-xs text-slate-400">{label}</p>
+                      <p className="text-xl font-bold text-blue-900">{nilai}</p>
                     </div>
                   </div>
-
-                  <div className="flex gap-2">
-
-                    <button
-                      onClick={buatPenerimaan}
-                      className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-[10px] font-bold text-white shadow-md shadow-blue-100 hover:bg-blue-700"
-                    >
-                      <PackageCheck size={15} />
-                      Konfirmasi Penerimaan
-                    </button>
-
-                    <button
-                      onClick={() => setSelectedPO(null)}
-                      className="rounded-xl border border-slate-200 bg-white p-2.5 text-slate-400 hover:bg-slate-50"
-                    >
-                      <X size={16} />
-                    </button>
-
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3 p-5 sm:grid-cols-4">
-
-                  <MiniInfo
-                    icon={<ShoppingCart size={15} />}
-                    label="Total Item"
-                    value={String(selectedPO.jumlah_item)}
-                    color="blue"
-                  />
-
-                  <MiniInfo
-                    icon={<PackageCheck size={15} />}
-                    label="Diterima"
-                    value="0"
-                    color="green"
-                  />
-
-                  <MiniInfo
-                    icon={<ClipboardCheck size={15} />}
-                    label="Dalam QC"
-                    value="0"
-                    color="purple"
-                  />
-
-                  <MiniInfo
-                    icon={<Truck size={15} />}
-                    label="Sisa"
-                    value={String(selectedPO.jumlah_item)}
-                    color="red"
-                  />
-
-                </div>
-              </section>
-            )}
-
-          </div>
+                ))}
+              </div>
+            </section>
+          )}
         </div>
       </main>
 
-      {/* ========================= */}
+      {/* TOAST */}
+      {toast && (
+        <div className="anim-toast fixed right-5 top-5 z-[200] flex max-w-sm items-start gap-3 rounded-xl border border-slate-100 bg-white p-4 shadow-2xl">
+          {toast.ok ? <CheckCircle2 size={22} className="mt-0.5 shrink-0 text-blue-700" /> : <AlertCircle size={22} className="mt-0.5 shrink-0 text-red-600" />}
+          <div>
+            <p className="text-sm font-bold text-slate-800">{toast.ok ? "Berhasil" : "Gagal"}</p>
+            <p className="mt-0.5 text-sm text-slate-500">{toast.pesan}</p>
+          </div>
+          <div className={`absolute inset-x-0 bottom-0 h-1 rounded-b-xl ${toast.ok ? "bg-yellow-400" : "bg-red-600"}`} />
+        </div>
+      )}
+
       {/* MODAL BUAT PO */}
-      {/* ========================= */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
-
-          <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-3xl bg-white shadow-2xl">
-
-            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-5">
-
-              <div>
-                <p className="text-[10px] font-bold text-blue-600">
-                  WAREHOUSE PROCUREMENT
-                </p>
-
-                <h2 className="mt-1 text-lg font-extrabold">
-                  Buat Purchase Order
-                </h2>
-
-                <p className="mt-1 text-[10px] text-slate-400">
-                  Buat pesanan barang kepada supplier
-                </p>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-blue-950/40 p-4 backdrop-blur-[2px]">
+          <form onSubmit={simpanPO} className="anim-modal max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
+            <Garis />
+            <div className="p-6">
+              <div className="mb-5 flex items-start justify-between">
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-red-600">Warehouse procurement</p>
+                  <h2 className="mt-1 text-xl font-bold text-blue-900">Buat Purchase Order</h2>
+                  <p className="mt-1 text-sm text-slate-400">Buat pesanan barang kepada supplier</p>
+                </div>
+                <button type="button" onClick={tutupModal} className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"><X size={20} /></button>
               </div>
-
-              <button
-                onClick={() => setShowModal(false)}
-                className="rounded-xl p-2 text-slate-400 hover:bg-slate-100"
-              >
-                <X size={19} />
-              </button>
-
-            </div>
-
-            <div className="space-y-5 p-6">
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-
-                <InputField
-                  label="Nomor PO"
-                  value={nomor}
-                  onChange={setNomor}
-                  placeholder="PO-2026-0001"
-                />
-
-                <div>
-                  <label className="mb-2 block text-[10px] font-bold text-slate-600">
-                    Supplier
-                  </label>
-
-                  <select
-                    value={supplierId}
-                    onChange={(e) =>
-                      setSupplierId(e.target.value)
-                    }
-                    className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none focus:border-blue-500"
-                  >
-                    <option value="">
-                      Pilih Supplier
-                    </option>
-
-                    {supplier.map((x) => (
-                      <option key={x.id} value={x.id}>
-                        {x.nama_supplier}
-                      </option>
-                    ))}
+                <Field label="Nomor PO">
+                  <input value={nomor} onChange={(e) => setNomor(e.target.value)} placeholder="PO-2026-0001" disabled={loading} className={input} />
+                </Field>
+                <Field label="Supplier">
+                  <select value={supplierId} onChange={(e) => setSupplierId(e.target.value)} disabled={loading} className={input}>
+                    <option value="">Pilih supplier</option>
+                    {supplier.map((x) => <option key={x.id} value={x.id}>{x.nama_supplier}</option>)}
                   </select>
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-[10px] font-bold text-slate-600">
-                    Tanggal
-                  </label>
-
-                  <div className="relative">
-
-                    <CalendarDays
-                      size={15}
-                      className="absolute left-3 top-3 text-slate-400"
-                    />
-
-                    <input
-                      type="date"
-                      value={tanggal}
-                      onChange={(e) =>
-                        setTanggal(e.target.value)
-                      }
-                      className="h-11 w-full rounded-xl border border-slate-200 pl-9 pr-3 text-xs outline-none focus:border-blue-500"
-                    />
-
-                  </div>
-                </div>
-
+                </Field>
+                <Field label="Tanggal">
+                  <input type="date" value={tanggal} onChange={(e) => setTanggal(e.target.value)} disabled={loading} className={input} />
+                </Field>
               </div>
 
-              <div className="overflow-hidden rounded-2xl border border-slate-100">
-
-                <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-4 py-3">
-
+              {/* PRODUK DIPESAN */}
+              <div className="mt-5 overflow-hidden rounded-2xl border border-slate-200">
+                <div className="flex items-center justify-between border-b border-yellow-300 bg-blue-50/70 px-4 py-3">
                   <div>
-                    <p className="text-xs font-extrabold text-slate-700">
-                      Produk yang Dipesan
-                    </p>
-
-                    <p className="mt-1 text-[9px] text-slate-400">
-                      Pilih produk dari Inventory
-                    </p>
+                    <p className="text-sm font-bold text-blue-900">Produk yang dipesan</p>
+                    <p className="mt-0.5 text-xs text-slate-400">Pilih produk dari Inventory</p>
                   </div>
-
-                  <button
-                    onClick={tambahItem}
-                    className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-[10px] font-bold text-white hover:bg-blue-700"
-                  >
-                    <Plus size={13} />
-                    Tambah Produk
+                  <button type="button" onClick={tambahItem} className="flex items-center gap-1.5 rounded-lg bg-red-600 px-3.5 py-2 text-xs font-semibold text-white shadow-md shadow-red-100 transition hover:bg-red-700">
+                    <Plus size={14} /> Tambah produk
                   </button>
-
                 </div>
 
                 <div className="space-y-3 p-4">
+                  <div className="hidden grid-cols-[1fr_120px_160px_40px] gap-3 px-3 text-xs font-semibold text-slate-400 md:grid">
+                    <span>Produk</span><span>Jumlah</span><span>Harga satuan</span><span />
+                  </div>
 
                   {items.map((item, i) => (
-                    <div
-                      key={i}
-                      className="grid grid-cols-1 gap-3 rounded-xl border border-slate-100 p-3 md:grid-cols-[1fr_130px_160px_40px]"
-                    >
-
+                    <div key={i} className="grid grid-cols-1 gap-3 rounded-xl border border-slate-100 bg-white p-3 transition hover:border-blue-200 md:grid-cols-[1fr_120px_160px_40px] md:items-center">
                       <select
                         value={item.produk_id}
-                        onChange={(e) =>
-                          ubahProduk(
-                            i,
-                            Number(e.target.value)
-                          )
-                        }
-                        className="h-10 rounded-lg border border-slate-200 px-3 text-xs outline-none focus:border-blue-500"
+                        onChange={(e) => ubahProduk(i, Number(e.target.value))}
+                        disabled={loading}
+                        className={`${input} !py-2.5`}
                       >
-                        <option value={0}>
-                          Pilih Produk Inventory
-                        </option>
-
-                        {produk.map((p) => (
-                          <option
-                            key={p.id}
-                            value={p.id}
-                          >
-                            {p.kode_produk} - {p.nama}
-                          </option>
-                        ))}
+                        <option value={0}>Pilih produk inventory</option>
+                        {produk.map((p) => <option key={p.id} value={p.id}>{p.kode_produk} - {p.nama}</option>)}
                       </select>
 
                       <input
                         type="number"
-                        min="1"
+                        min={1}
                         value={item.jumlah}
-                        onChange={(e) => {
-                          const data = [...items];
-
-                          data[i].jumlah = Number(
-                            e.target.value
-                          );
-
-                          setItems(data);
-                        }}
-                        className="h-10 rounded-lg border border-slate-200 px-3 text-xs outline-none focus:border-blue-500"
+                        onChange={(e) => ubahItem(i, "jumlah", Number(e.target.value))}
+                        disabled={loading}
                         placeholder="Jumlah"
+                        className={`${input} !py-2.5`}
                       />
 
                       <input
                         type="number"
-                        min="0"
+                        min={0}
                         value={item.harga}
-                        onChange={(e) => {
-                          const data = [...items];
-
-                          data[i].harga = Number(
-                            e.target.value
-                          );
-
-                          setItems(data);
-                        }}
-                        className="h-10 rounded-lg border border-slate-200 px-3 text-xs outline-none focus:border-blue-500"
+                        onChange={(e) => ubahItem(i, "harga", Number(e.target.value))}
+                        disabled={loading}
                         placeholder="Harga"
+                        className={`${input} !py-2.5`}
                       />
 
                       <button
+                        type="button"
                         onClick={() => hapusItem(i)}
-                        className="flex h-10 items-center justify-center rounded-lg text-red-500 hover:bg-red-50"
+                        disabled={items.length === 1}
+                        title="Hapus produk"
+                        className="flex h-10 items-center justify-center rounded-lg text-red-600 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
                       >
-                        <X size={16} />
+                        <Trash2 size={17} />
                       </button>
-
                     </div>
                   ))}
+                </div>
 
+                <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50/70 px-4 py-3">
+                  <span className="text-sm text-slate-500">Estimasi total</span>
+                  <span className="text-lg font-bold text-blue-900">{rupiah(totalPO)}</span>
                 </div>
               </div>
 
-              <div className="flex justify-end gap-2 border-t border-slate-100 pt-5">
-
-                <button
-                  onClick={() => setShowModal(false)}
-                  className="rounded-xl border border-slate-200 px-5 py-2.5 text-xs font-bold text-slate-500 hover:bg-slate-50"
-                >
+              <div className="mt-6 flex justify-end gap-2">
+                <button type="button" onClick={tutupModal} disabled={loading} className="rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-500 transition hover:bg-slate-100 disabled:opacity-50">
                   Batal
                 </button>
-
-                <button
-                  onClick={simpanPO}
-                  className="rounded-xl bg-blue-600 px-5 py-2.5 text-xs font-bold text-white shadow-md shadow-blue-100 hover:bg-blue-700"
-                >
-                  Simpan Purchase Order
+                <button type="submit" disabled={loading} className="rounded-xl bg-blue-700 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-blue-100 transition hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-60">
+                  {loading ? "Menyimpan..." : "Simpan purchase order"}
                 </button>
-
               </div>
-
             </div>
-          </div>
+          </form>
         </div>
       )}
-    </div>
-  );
-}
-
-/* ========================= */
-/* FILTER */
-/* ========================= */
-
-function Filter({
-  search,
-  setSearch,
-  status,
-  setStatus,
-  placeholder,
-  options,
-}: {
-  search: string;
-  setSearch: (v: string) => void;
-  status: string;
-  setStatus: (v: string) => void;
-  placeholder: string;
-  options: string[];
-}) {
-  return (
-    <div className="flex flex-col gap-3 p-5 sm:flex-row">
-
-      <div className="flex h-10 flex-1 items-center gap-2 rounded-xl border border-slate-200 px-3">
-
-        <Search
-          size={16}
-          className="text-slate-400"
-        />
-
-        <input
-          value={search}
-          onChange={(e) =>
-            setSearch(e.target.value)
-          }
-          placeholder={placeholder}
-          className="w-full text-xs outline-none placeholder:text-slate-400"
-        />
-
-      </div>
-
-      <select
-        value={status}
-        onChange={(e) =>
-          setStatus(e.target.value)
-        }
-        className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-600 outline-none"
-      >
-        <option>Semua Status</option>
-
-        {options.map((x) => (
-          <option key={x}>{x}</option>
-        ))}
-      </select>
-
-    </div>
-  );
-}
-
-/* ========================= */
-/* ICON BOX */
-/* ========================= */
-
-function IconBox({
-  children,
-  color,
-}: {
-  children: React.ReactNode;
-  color: "blue" | "green" | "orange";
-}) {
-  const c = {
-    blue: "bg-blue-50 text-blue-600",
-    green: "bg-emerald-50 text-emerald-600",
-    orange: "bg-orange-100 text-orange-500",
-  }[color];
-
-  return (
-    <div
-      className={`flex h-11 w-11 items-center justify-center rounded-2xl ${c}`}
-    >
-      {children}
-    </div>
-  );
-}
-
-/* ========================= */
-/* EMPTY */
-/* ========================= */
-
-function Empty({
-  col,
-  text,
-}: {
-  col: number;
-  text: string;
-}) {
-  return (
-    <tr>
-      <td
-        colSpan={col}
-        className="py-12 text-center text-xs text-slate-400"
-      >
-        {text}
-      </td>
-    </tr>
-  );
-}
-
-/* ========================= */
-/* STAT CARD */
-/* ========================= */
-
-function StatCard({
-  icon,
-  label,
-  value,
-  note,
-  color,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: number;
-  note: string;
-  color: "blue" | "orange" | "green" | "purple";
-}) {
-  const s = {
-    blue: [
-      "bg-blue-50",
-      "text-blue-600",
-      "text-blue-700",
-    ],
-    orange: [
-      "bg-orange-50",
-      "text-orange-500",
-      "text-orange-600",
-    ],
-    green: [
-      "bg-emerald-50",
-      "text-emerald-600",
-      "text-emerald-700",
-    ],
-    purple: [
-      "bg-violet-50",
-      "text-violet-600",
-      "text-violet-700",
-    ],
-  }[color];
-
-  return (
-    <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm transition hover:-translate-y-1 hover:shadow-lg">
-
-      <div
-        className={`mb-3 flex h-10 w-10 items-center justify-center rounded-xl ${s[0]} ${s[1]}`}
-      >
-        {icon}
-      </div>
-
-      <p className="text-[10px] font-medium text-slate-400">
-        {label}
-      </p>
-
-      <h3
-        className={`mt-1 text-2xl font-extrabold ${s[2]}`}
-      >
-        {value}
-      </h3>
-
-      <p className="mt-1 text-[9px] text-slate-400">
-        {note}
-      </p>
-
-    </div>
-  );
-}
-
-/* ========================= */
-/* MINI INFO */
-/* ========================= */
-
-function MiniInfo({
-  icon,
-  label,
-  value,
-  color,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  color: "blue" | "green" | "purple" | "red";
-}) {
-  const s = {
-    blue: "bg-blue-50 text-blue-600",
-    green: "bg-emerald-50 text-emerald-600",
-    purple: "bg-violet-50 text-violet-600",
-    red: "bg-red-50 text-red-500",
-  }[color];
-
-  return (
-    <div className="rounded-2xl border border-slate-100 bg-white p-3">
-
-      <div className="flex items-center gap-2">
-
-        <div
-          className={`flex h-8 w-8 items-center justify-center rounded-lg ${s}`}
-        >
-          {icon}
-        </div>
-
-        <div>
-          <p className="text-[9px] text-slate-400">
-            {label}
-          </p>
-
-          <p className="text-sm font-extrabold text-slate-700">
-            {value}
-          </p>
-        </div>
-
-      </div>
-    </div>
-  );
-}
-
-/* ========================= */
-/* INPUT FIELD */
-/* ========================= */
-
-function InputField({
-  label,
-  value,
-  onChange,
-  placeholder,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder: string;
-}) {
-  return (
-    <div>
-
-      <label className="mb-2 block text-[10px] font-bold text-slate-600">
-        {label}
-      </label>
-
-      <input
-        value={value}
-        onChange={(e) =>
-          onChange(e.target.value)
-        }
-        placeholder={placeholder}
-        className="h-11 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none focus:border-blue-500"
-      />
-
     </div>
   );
 }

@@ -1,21 +1,27 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, type ReactNode } from 'react';
 import Image from 'next/image';
 import {
   Search,
   Plus,
+  Minus,
   Package,
   AlertTriangle,
   CheckCircle2,
   Trash2,
-  Eye,
   Pencil,
   X,
+  Check,
+  Clock,
+  RefreshCw,
+  Calendar,
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react';
 import SidebarInventory from '../../components/SidebarInventory'; // sesuaikan path
+
+type Status = 'Menunggu' | 'Diproses' | 'Selesai' | 'Dibuang';
 
 type BarangRusak = {
   id: number;
@@ -26,7 +32,7 @@ type BarangRusak = {
   kategori: string;
   qty: number;
   keterangan: string;
-  status: 'Menunggu' | 'Diproses' | 'Selesai' | 'Dibuang';
+  status: Status;
 };
 
 type ProdukOption = {
@@ -34,11 +40,54 @@ type ProdukOption = {
   nama: string;
 };
 
-const statusPill: Record<BarangRusak['status'], string> = {
+const STATUS_LIST: Status[] = ['Menunggu', 'Diproses', 'Selesai', 'Dibuang'];
+
+const statusPill: Record<Status, string> = {
   Menunggu: 'bg-amber-50 text-amber-600',
   Diproses: 'bg-red-50 text-red-500',
   Selesai: 'bg-emerald-50 text-emerald-600',
   Dibuang: 'bg-purple-50 text-purple-600',
+};
+
+// class ditulis lengkap supaya Tailwind tidak membuangnya saat build
+const statusOption: Record<
+  Status,
+  {
+    desc: string;
+    icon: typeof Clock;
+    iconBox: string;
+    activeCard: string;
+    badge: string;
+  }
+> = {
+  Menunggu: {
+    desc: 'Belum ditangani',
+    icon: Clock,
+    iconBox: 'bg-amber-50 text-amber-500',
+    activeCard: 'border-amber-400 bg-amber-50/50',
+    badge: 'bg-amber-500',
+  },
+  Diproses: {
+    desc: 'Sedang ditangani',
+    icon: RefreshCw,
+    iconBox: 'bg-red-50 text-red-500',
+    activeCard: 'border-red-400 bg-red-50/50',
+    badge: 'bg-red-500',
+  },
+  Selesai: {
+    desc: 'Sudah beres',
+    icon: CheckCircle2,
+    iconBox: 'bg-emerald-50 text-emerald-500',
+    activeCard: 'border-emerald-400 bg-emerald-50/50',
+    badge: 'bg-emerald-500',
+  },
+  Dibuang: {
+    desc: 'Tidak bisa dipakai',
+    icon: Trash2,
+    iconBox: 'bg-purple-50 text-purple-500',
+    activeCard: 'border-purple-400 bg-purple-50/50',
+    badge: 'bg-purple-500',
+  },
 };
 
 function formatTanggal(tgl: string) {
@@ -51,6 +100,192 @@ function formatTanggal(tgl: string) {
 
 const PER_PAGE = 5;
 
+/* ============================================================
+   KOMPONEN MODAL (dipakai bersama oleh Tambah & Edit)
+   ============================================================ */
+
+function ModalShell({
+  icon,
+  title,
+  subtitle,
+  onClose,
+  footer,
+  children,
+}: {
+  icon: ReactNode;
+  title: string;
+  subtitle: string;
+  onClose: () => void;
+  footer: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
+      <div className="flex max-h-[92vh] w-full max-w-[480px] flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+        {/* HEADER */}
+        <div className="relative shrink-0 overflow-hidden bg-gradient-to-r from-blue-600 to-blue-500 px-6 py-5">
+          <div className="pointer-events-none absolute -right-6 -top-10 h-32 w-32 rounded-full bg-white/10" />
+          <div className="pointer-events-none absolute -bottom-12 right-16 h-24 w-24 rounded-full bg-white/10" />
+
+          <div className="relative z-10 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3.5">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/20 text-white">
+                {icon}
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-white">{title}</h2>
+                <p className="text-xs text-blue-100">{subtitle}</p>
+              </div>
+            </div>
+            <button
+              onClick={onClose}
+              aria-label="Tutup"
+              className="rounded-lg p-1.5 text-white/80 transition hover:bg-white/15 hover:text-white"
+            >
+              <X size={20} />
+            </button>
+          </div>
+        </div>
+
+        {/* BODY */}
+        <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">{children}</div>
+
+        {/* FOOTER */}
+        <div className="flex shrink-0 justify-end gap-2 border-t border-slate-100 bg-white px-6 py-4">
+          {footer}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SectionLabel({ children }: { children: ReactNode }) {
+  return (
+    <label className="mb-2 block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+      {children}
+    </label>
+  );
+}
+
+function StatusPicker({
+  value,
+  onChange,
+}: {
+  value: Status;
+  onChange: (s: Status) => void;
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      {STATUS_LIST.map((s) => {
+        const opt = statusOption[s];
+        const Icon = opt.icon;
+        const active = value === s;
+        return (
+          <button
+            key={s}
+            type="button"
+            onClick={() => onChange(s)}
+            className={`relative flex items-center gap-3 rounded-2xl border-2 p-3 text-left transition ${
+              active
+                ? opt.activeCard
+                : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+            }`}
+          >
+            <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${opt.iconBox}`}>
+              <Icon size={18} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-slate-700">{s}</p>
+              <p className="truncate text-[11px] text-slate-400">{opt.desc}</p>
+            </div>
+            {active && (
+              <span
+                className={`absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full text-white ${opt.badge}`}
+              >
+                <Check size={12} strokeWidth={3} />
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function QtyStepper({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (n: number) => void;
+}) {
+  return (
+    <div className="flex items-center overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <button
+        type="button"
+        onClick={() => onChange(Math.max(1, value - 1))}
+        className="px-3 py-3 text-slate-400 hover:bg-slate-50 hover:text-slate-600"
+        aria-label="Kurangi"
+      >
+        <Minus size={14} />
+      </button>
+      <input
+        type="number"
+        min={1}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        style={{ color: '#334155' }}
+        className="w-full min-w-0 bg-transparent py-2.5 text-center text-sm font-semibold outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+      />
+      <button
+        type="button"
+        onClick={() => onChange(value + 1)}
+        className="px-3 py-3 text-slate-400 hover:bg-slate-50 hover:text-slate-600"
+        aria-label="Tambah"
+      >
+        <Plus size={14} />
+      </button>
+    </div>
+  );
+}
+
+function DateField({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div className="relative">
+      <Calendar size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-blue-500" />
+      <input
+        type="date"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={{ color: '#334155' }}
+        className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+      />
+    </div>
+  );
+}
+
+const inputClass =
+  'w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none placeholder:text-slate-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-100';
+
+function ErrorBox({ message }: { message: string }) {
+  if (!message) return null;
+  return (
+    <p className="rounded-xl bg-rose-50 px-3.5 py-2.5 text-xs font-medium text-rose-600">
+      {message}
+    </p>
+  );
+}
+
+/* ============================================================
+   HALAMAN
+   ============================================================ */
+
 export default function BarangRusakPage() {
   const [data, setData] = useState<BarangRusak[]>([]);
   const [loading, setLoading] = useState(true);
@@ -60,22 +295,27 @@ export default function BarangRusakPage() {
   const [page, setPage] = useState(1);
 
   const [produkOptions, setProdukOptions] = useState<ProdukOption[]>([]);
+
+  // ==== TAMBAH MODAL ====
   const [showModal, setShowModal] = useState(false);
+  const [addSubmitting, setAddSubmitting] = useState(false);
+  const [addError, setAddError] = useState('');
   const [form, setForm] = useState({
     barcode: '',
     tanggal: '',
     qty: 1,
     keterangan: '',
-    status: 'Menunggu' as BarangRusak['status'],
+    status: 'Menunggu' as Status,
   });
 
   // ==== EDIT MODAL ====
   const [showEditModal, setShowEditModal] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
+  const [editProduk, setEditProduk] = useState<{ nama: string; kategori: string } | null>(null);
   const [editTanggal, setEditTanggal] = useState('');
   const [editQty, setEditQty] = useState(1);
   const [editKeterangan, setEditKeterangan] = useState('');
-  const [editStatus, setEditStatus] = useState<BarangRusak['status']>('Menunggu');
+  const [editStatus, setEditStatus] = useState<Status>('Menunggu');
   const [editSubmitting, setEditSubmitting] = useState(false);
   const [editError, setEditError] = useState('');
 
@@ -106,7 +346,9 @@ export default function BarangRusakPage() {
   useEffect(() => {
     fetch('/api/products')
       .then((res) => res.json())
-      .then((json) => setProdukOptions(json.map((p: { id: string; nama: string }) => ({ id: p.id, nama: p.nama }))))
+      .then((json) =>
+        setProdukOptions(json.map((p: { id: string; nama: string }) => ({ id: p.id, nama: p.nama })))
+      )
       .catch(console.error);
   }, []);
 
@@ -118,11 +360,30 @@ export default function BarangRusakPage() {
   const totalPages = Math.max(1, Math.ceil(data.length / PER_PAGE));
   const paginated = data.slice((page - 1) * PER_PAGE, page * PER_PAGE);
 
+  // ===== TAMBAH BARANG RUSAK =====
+  function bukaTambah() {
+    setAddError('');
+    setShowModal(true);
+  }
+
+  function tutupTambah() {
+    setShowModal(false);
+    setAddError('');
+  }
+
   async function handleTambahData() {
+    setAddError('');
+
     if (!form.barcode || !form.tanggal || !form.keterangan) {
-      alert('Produk, tanggal, dan keterangan wajib diisi');
+      setAddError('Produk, tanggal, dan keterangan wajib diisi.');
       return;
     }
+    if (form.qty <= 0) {
+      setAddError('Qty minimal 1.');
+      return;
+    }
+
+    setAddSubmitting(true);
     try {
       const res = await fetch('/api/barang-rusak', {
         method: 'POST',
@@ -130,14 +391,19 @@ export default function BarangRusakPage() {
         body: JSON.stringify(form),
       });
       const json = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(json?.message ?? 'Gagal menambahkan data');
+      if (!res.ok) {
+        setAddError(json?.message ?? 'Gagal menambahkan data.');
+        return;
+      }
 
-      setShowModal(false);
+      tutupTambah();
       setForm({ barcode: '', tanggal: '', qty: 1, keterangan: '', status: 'Menunggu' });
       fetchData();
     } catch (err) {
       console.error(err);
-      alert(err instanceof Error ? err.message : 'Gagal menambahkan data');
+      setAddError('Terjadi kesalahan koneksi saat menyimpan data.');
+    } finally {
+      setAddSubmitting(false);
     }
   }
 
@@ -156,6 +422,7 @@ export default function BarangRusakPage() {
   // ===== EDIT BARANG RUSAK =====
   function bukaEdit(item: BarangRusak) {
     setEditId(item.id);
+    setEditProduk({ nama: item.nama, kategori: item.kategori });
     setEditTanggal(item.tanggal.slice(0, 10)); // pastikan format YYYY-MM-DD buat input date
     setEditQty(item.qty);
     setEditKeterangan(item.keterangan);
@@ -167,6 +434,7 @@ export default function BarangRusakPage() {
   function tutupEdit() {
     setShowEditModal(false);
     setEditId(null);
+    setEditProduk(null);
   }
 
   async function handleSimpanEdit() {
@@ -227,7 +495,6 @@ export default function BarangRusakPage() {
               </p>
             </div>
           </div>
-
         </div>
 
         {/* SEARCH + FILTER + TAMBAH */}
@@ -256,13 +523,13 @@ export default function BarangRusakPage() {
             onChange={(e) => setStatusFilter(e.target.value)}
             className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-600 shadow-sm outline-none"
           >
-            {['Semua', 'Menunggu', 'Diproses', 'Selesai', 'Dibuang'].map((s) => (
+            {['Semua', ...STATUS_LIST].map((s) => (
               <option key={s}>{s}</option>
             ))}
           </select>
 
           <button
-            onClick={() => setShowModal(true)}
+            onClick={bukaTambah}
             className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-blue-200 hover:bg-blue-700"
           >
             <Plus size={16} />
@@ -278,7 +545,9 @@ export default function BarangRusakPage() {
             </div>
             <div>
               <p className="text-xs text-slate-400">Total Barang Rusak</p>
-              <p className="text-lg font-bold text-slate-800">{countTotal} <span className="text-xs font-normal text-slate-400">item</span></p>
+              <p className="text-lg font-bold text-slate-800">
+                {countTotal} <span className="text-xs font-normal text-slate-400">item</span>
+              </p>
             </div>
           </div>
 
@@ -288,7 +557,9 @@ export default function BarangRusakPage() {
             </div>
             <div>
               <p className="text-xs text-slate-400">Menunggu Penanganan</p>
-              <p className="text-lg font-bold text-slate-800">{countMenunggu} <span className="text-xs font-normal text-slate-400">item</span></p>
+              <p className="text-lg font-bold text-slate-800">
+                {countMenunggu} <span className="text-xs font-normal text-slate-400">item</span>
+              </p>
             </div>
           </div>
 
@@ -298,7 +569,9 @@ export default function BarangRusakPage() {
             </div>
             <div>
               <p className="text-xs text-slate-400">Sudah Diproses</p>
-              <p className="text-lg font-bold text-slate-800">{countSelesai} <span className="text-xs font-normal text-slate-400">item</span></p>
+              <p className="text-lg font-bold text-slate-800">
+                {countSelesai} <span className="text-xs font-normal text-slate-400">item</span>
+              </p>
             </div>
           </div>
 
@@ -308,7 +581,9 @@ export default function BarangRusakPage() {
             </div>
             <div>
               <p className="text-xs text-slate-400">Dibuang</p>
-              <p className="text-lg font-bold text-slate-800">{countDibuang} <span className="text-xs font-normal text-slate-400">item</span></p>
+              <p className="text-lg font-bold text-slate-800">
+                {countDibuang} <span className="text-xs font-normal text-slate-400">item</span>
+              </p>
             </div>
           </div>
         </div>
@@ -330,56 +605,62 @@ export default function BarangRusakPage() {
               </thead>
               <tbody>
                 {loading && (
-                  <tr><td colSpan={7} className="p-10 text-center text-slate-400">Memuat data...</td></tr>
-                )}
-                {!loading && paginated.length === 0 && (
-                  <tr><td colSpan={7} className="p-10 text-center text-slate-400">Tidak ada data</td></tr>
-                )}
-                {!loading && paginated.map((item, idx) => (
-                  <tr key={item.id} className="border-b border-slate-50 transition hover:bg-slate-50/70">
-                    <td className="p-4">
-                      <div className="flex items-center gap-3">
-                        <span className="text-slate-500">{(page - 1) * PER_PAGE + idx + 1}</span>
-                        <div className="relative h-10 w-10 overflow-hidden rounded-xl bg-slate-100 ring-1 ring-slate-100">
-                          {item.gambar && (
-                            <Image src={item.gambar} alt={item.nama} fill className="object-cover" />
-                          )}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="p-4 text-slate-500">{formatTanggal(item.tanggal)}</td>
-                    <td className="p-4">
-                      <p className="font-semibold text-slate-700">{item.nama}</p>
-                      <p className="text-xs text-slate-400">{item.kategori}</p>
-                    </td>
-                    <td className="p-4 font-medium text-slate-600">{item.qty}</td>
-                    <td className="p-4 text-slate-500">{item.keterangan}</td>
-                    <td className="p-4">
-                      <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusPill[item.status]}`}>
-                        {item.status}
-                      </span>
-                    </td>
-                    <td className="p-4">
-                      <div className="flex items-center gap-2">
-                        <button className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
-                          <Eye size={16} />
-                        </button>
-                        <button
-                          onClick={() => bukaEdit(item)}
-                          className="rounded-lg p-1.5 text-blue-400 hover:bg-blue-50 hover:text-blue-600"
-                        >
-                          <Pencil size={16} />
-                        </button>
-                        <button
-                          onClick={() => handleHapus(item.id)}
-                          className="rounded-lg p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
+                  <tr>
+                    <td colSpan={7} className="p-10 text-center text-slate-400">
+                      Memuat data...
                     </td>
                   </tr>
-                ))}
+                )}
+                {!loading && paginated.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="p-10 text-center text-slate-400">
+                      Tidak ada data
+                    </td>
+                  </tr>
+                )}
+                {!loading &&
+                  paginated.map((item, idx) => (
+                    <tr key={item.id} className="border-b border-slate-50 transition hover:bg-slate-50/70">
+                      <td className="p-4">
+                        <div className="flex items-center gap-3">
+                          <span className="text-slate-500">{(page - 1) * PER_PAGE + idx + 1}</span>
+                          <div className="relative h-10 w-10 overflow-hidden rounded-xl bg-slate-100 ring-1 ring-slate-100">
+                            {item.gambar && (
+                              <Image src={item.gambar} alt={item.nama} fill className="object-cover" />
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="p-4 text-slate-500">{formatTanggal(item.tanggal)}</td>
+                      <td className="p-4">
+                        <p className="font-semibold text-slate-700">{item.nama}</p>
+                        <p className="text-xs text-slate-400">{item.kategori}</p>
+                      </td>
+                      <td className="p-4 font-medium text-slate-600">{item.qty}</td>
+                      <td className="p-4 text-slate-500">{item.keterangan}</td>
+                      <td className="p-4">
+                        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusPill[item.status]}`}>
+                          {item.status}
+                        </span>
+                      </td>
+                      <td className="p-4">
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => bukaEdit(item)}
+                            className="rounded-lg p-1.5 text-blue-400 hover:bg-blue-50 hover:text-blue-600"
+                          >
+                            <Pencil size={16} />
+                          </button>
+                          <button
+                            onClick={() => handleHapus(item.id)}
+                            className="rounded-lg p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
               </tbody>
             </table>
           </div>
@@ -394,7 +675,7 @@ export default function BarangRusakPage() {
                 <button
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                   disabled={page === 1}
-                  className="rounded-lg border border-slate-200 p-1.5 text-slate-400 disabled:opacity-40 hover:bg-slate-50"
+                  className="rounded-lg border border-slate-200 p-1.5 text-slate-400 hover:bg-slate-50 disabled:opacity-40"
                 >
                   <ChevronLeft size={16} />
                 </button>
@@ -412,7 +693,7 @@ export default function BarangRusakPage() {
                 <button
                   onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                   disabled={page === totalPages}
-                  className="rounded-lg border border-slate-200 p-1.5 text-slate-400 disabled:opacity-40 hover:bg-slate-50"
+                  className="rounded-lg border border-slate-200 p-1.5 text-slate-400 hover:bg-slate-50 disabled:opacity-40"
                 >
                   <ChevronRight size={16} />
                 </button>
@@ -423,195 +704,148 @@ export default function BarangRusakPage() {
 
         {/* MODAL TAMBAH DATA */}
         {showModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm">
-            <div className="w-[420px] rounded-2xl bg-white p-6 shadow-2xl">
-              <div className="mb-5 flex items-start justify-between">
-                <div>
-                  <h2 className="text-lg font-bold text-slate-800">Tambah Barang Rusak</h2>
-                  <p className="text-xs text-slate-400">Catat produk yang rusak atau tidak layak jual.</p>
-                </div>
-                <button onClick={() => setShowModal(false)} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100">
-                  <X size={20} />
-                </button>
-              </div>
-
-              <div className="space-y-4">
-                <div>
-                  <label className="mb-1.5 block text-sm font-semibold text-slate-700">Produk</label>
-                  <select
-                    value={form.barcode}
-                    onChange={(e) => setForm({ ...form, barcode: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-600 outline-none focus:border-blue-400"
-                  >
-                    <option value="">Pilih produk...</option>
-                    {produkOptions.map((p) => (
-                      <option key={p.id} value={p.id}>{p.nama}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="mb-1.5 block text-sm font-semibold text-slate-700">Tanggal</label>
-                    <input
-                      type="date"
-                      value={form.tanggal}
-                      onChange={(e) => setForm({ ...form, tanggal: e.target.value })}
-                      style={{ color: '#334155' }}
-                      className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-blue-400"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1.5 block text-sm font-semibold text-slate-700">Qty</label>
-                    <input
-                      type="number"
-                      min={1}
-                      value={form.qty}
-                      onChange={(e) => setForm({ ...form, qty: Number(e.target.value) })}
-                      style={{ color: '#334155' }}
-                      className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-blue-400"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="mb-1.5 block text-sm font-semibold text-slate-700">Keterangan</label>
-                  <input
-                    type="text"
-                    value={form.keterangan}
-                    onChange={(e) => setForm({ ...form, keterangan: e.target.value })}
-                    placeholder="Contoh: Kemasan rusak, bocor, basah..."
-                    style={{ color: '#334155' }}
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none placeholder:text-slate-400 focus:border-blue-400"
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-1.5 block text-sm font-semibold text-slate-700">Status</label>
-                  <select
-                    value={form.status}
-                    onChange={(e) => setForm({ ...form, status: e.target.value as BarangRusak['status'] })}
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-600 outline-none focus:border-blue-400"
-                  >
-                    {['Menunggu', 'Diproses', 'Selesai', 'Dibuang'].map((s) => (
-                      <option key={s}>{s}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="mt-6 flex justify-end gap-2 border-t border-slate-100 pt-4">
+          <ModalShell
+            icon={<AlertTriangle size={22} />}
+            title="Tambah Barang Rusak"
+            subtitle="Catat produk yang rusak atau tidak layak jual"
+            onClose={tutupTambah}
+            footer={
+              <>
                 <button
-                  onClick={() => setShowModal(false)}
-                  className="rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-medium text-slate-500 hover:bg-slate-200"
+                  onClick={tutupTambah}
+                  disabled={addSubmitting}
+                  className="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-600 shadow-sm hover:bg-slate-50 disabled:opacity-60"
                 >
                   Batal
                 </button>
                 <button
                   onClick={handleTambahData}
-                  className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-blue-200 hover:bg-blue-700"
+                  disabled={addSubmitting}
+                  className="flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-blue-200 hover:bg-blue-700 disabled:opacity-60"
                 >
-                  Simpan
+                  <Plus size={16} />
+                  {addSubmitting ? 'Menyimpan...' : 'Simpan Data'}
                 </button>
+              </>
+            }
+          >
+            <div>
+              <SectionLabel>Produk</SectionLabel>
+              <select
+                value={form.barcode}
+                onChange={(e) => setForm({ ...form, barcode: e.target.value })}
+                className={`${inputClass} text-slate-600`}
+              >
+                <option value="">Pilih produk...</option>
+                {produkOptions.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.nama}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <SectionLabel>Tanggal</SectionLabel>
+                <DateField value={form.tanggal} onChange={(v) => setForm({ ...form, tanggal: v })} />
+              </div>
+              <div>
+                <SectionLabel>Qty</SectionLabel>
+                <QtyStepper value={form.qty} onChange={(n) => setForm({ ...form, qty: n })} />
               </div>
             </div>
-          </div>
+
+            <div>
+              <SectionLabel>Keterangan</SectionLabel>
+              <input
+                type="text"
+                value={form.keterangan}
+                onChange={(e) => setForm({ ...form, keterangan: e.target.value })}
+                placeholder="Contoh: Kemasan rusak, bocor, basah..."
+                style={{ color: '#334155' }}
+                className={inputClass}
+              />
+            </div>
+
+            <div>
+              <SectionLabel>Status</SectionLabel>
+              <StatusPicker value={form.status} onChange={(s) => setForm({ ...form, status: s })} />
+            </div>
+
+            <ErrorBox message={addError} />
+          </ModalShell>
         )}
 
         {/* MODAL EDIT BARANG RUSAK */}
         {showEditModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm">
-            <div className="w-[420px] rounded-2xl bg-white p-6 shadow-2xl">
-              <div className="mb-5 flex items-start justify-between">
-                <div className="flex items-center gap-2.5">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50">
-                    <Pencil className="text-blue-600" size={16} />
-                  </div>
-                  <div>
-                    <h2 className="text-lg font-bold text-slate-800">Edit Barang Rusak</h2>
-                    <p className="text-xs text-slate-400">Perbarui data barang rusak ini.</p>
-                  </div>
-                </div>
-                <button onClick={tutupEdit} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100">
-                  <X size={20} />
-                </button>
-              </div>
-
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="mb-1.5 block text-sm font-semibold text-slate-700">Tanggal</label>
-                    <input
-                      type="date"
-                      value={editTanggal}
-                      onChange={(e) => setEditTanggal(e.target.value)}
-                      style={{ color: '#334155' }}
-                      className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-blue-400"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1.5 block text-sm font-semibold text-slate-700">Qty</label>
-                    <input
-                      type="number"
-                      min={1}
-                      value={editQty}
-                      onChange={(e) => setEditQty(Number(e.target.value))}
-                      style={{ color: '#334155' }}
-                      className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-blue-400"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="mb-1.5 block text-sm font-semibold text-slate-700">Keterangan</label>
-                  <input
-                    type="text"
-                    value={editKeterangan}
-                    onChange={(e) => setEditKeterangan(e.target.value)}
-                    placeholder="Contoh: Kemasan rusak, bocor, basah..."
-                    style={{ color: '#334155' }}
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none placeholder:text-slate-400 focus:border-blue-400"
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-1.5 block text-sm font-semibold text-slate-700">Status</label>
-                  <select
-                    value={editStatus}
-                    onChange={(e) => setEditStatus(e.target.value as BarangRusak['status'])}
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-600 outline-none focus:border-blue-400"
-                  >
-                    {['Menunggu', 'Diproses', 'Selesai', 'Dibuang'].map((s) => (
-                      <option key={s}>{s}</option>
-                    ))}
-                  </select>
-                </div>
-
-                {editError && (
-                  <p className="rounded-xl bg-rose-50 px-3.5 py-2.5 text-xs font-medium text-rose-600">
-                    {editError}
-                  </p>
-                )}
-              </div>
-
-              <div className="mt-6 flex justify-end gap-2 border-t border-slate-100 pt-4">
+          <ModalShell
+            icon={<Pencil size={22} />}
+            title="Edit Barang Rusak"
+            subtitle="Perbarui data barang rusak ini"
+            onClose={tutupEdit}
+            footer={
+              <>
                 <button
                   onClick={tutupEdit}
                   disabled={editSubmitting}
-                  className="rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-medium text-slate-500 hover:bg-slate-200 disabled:opacity-60"
+                  className="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-600 shadow-sm hover:bg-slate-50 disabled:opacity-60"
                 >
                   Batal
                 </button>
                 <button
                   onClick={handleSimpanEdit}
                   disabled={editSubmitting}
-                  className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-blue-200 hover:bg-blue-700 disabled:opacity-60"
+                  className="flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-blue-200 hover:bg-blue-700 disabled:opacity-60"
                 >
+                  <Check size={16} />
                   {editSubmitting ? 'Menyimpan...' : 'Simpan Perubahan'}
                 </button>
+              </>
+            }
+          >
+            {editProduk && (
+              <div className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50 p-3.5">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-blue-500 shadow-sm">
+                  <Package size={18} />
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-slate-700">{editProduk.nama}</p>
+                  <p className="text-xs text-slate-400">{editProduk.kategori}</p>
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <SectionLabel>Tanggal</SectionLabel>
+                <DateField value={editTanggal} onChange={setEditTanggal} />
+              </div>
+              <div>
+                <SectionLabel>Qty</SectionLabel>
+                <QtyStepper value={editQty} onChange={setEditQty} />
               </div>
             </div>
-          </div>
+
+            <div>
+              <SectionLabel>Keterangan</SectionLabel>
+              <input
+                type="text"
+                value={editKeterangan}
+                onChange={(e) => setEditKeterangan(e.target.value)}
+                placeholder="Contoh: Kemasan rusak, bocor, basah..."
+                style={{ color: '#334155' }}
+                className={inputClass}
+              />
+            </div>
+
+            <div>
+              <SectionLabel>Status</SectionLabel>
+              <StatusPicker value={editStatus} onChange={setEditStatus} />
+            </div>
+
+            <ErrorBox message={editError} />
+          </ModalShell>
         )}
       </main>
     </div>

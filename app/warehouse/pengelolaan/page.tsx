@@ -1,66 +1,105 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import SidebarWarehouse from "@/app/components/SidebarWarehouse";
-import HeaderWarehouse from "@/app/components/HeaderWarehouse";
-
 import {
-  CheckCircle2,
-  ClipboardCheck,
-  PackageCheck,
-  ClipboardList,
-  Search,
-  Plus,
-  X,
-  MapPin,
-  AlertTriangle,
-  Boxes,
+  Search, ClipboardCheck, PackageCheck, ClipboardList, MapPin, X, Plus,
+  CheckCircle2, AlertCircle, AlertTriangle, Boxes, CircleCheck, Clock3, XCircle, Truck,
 } from "lucide-react";
 
-type Penerimaan = {
-  id: number;
-  nomor_penerimaan: string;
-  tanggal: string;
-  status: string;
-  nomor_po: string;
-  nama_supplier: string;
+type Penerimaan = { id: number; nomor_penerimaan: string; tanggal: string; status: string; nomor_po: string; nama_supplier: string };
+type QC = { id: number; tanggal: string; status: string; catatan: string; nomor_penerimaan: string; nomor_po: string };
+type Putaway = { id: number; tanggal: string; status: string; catatan: string; qc_id: number };
+type Produk = { id: number; kode_produk: string; nama: string; stok: number; kategori: string };
+type Opname = { id: number; nomor_opname: string; tanggal: string; status: string; jumlah_item: number };
+
+type Tab = "qc" | "putaway" | "opname";
+const API = "/api/warehouse/pengelolaan";
+const LOKASI = ["A-01", "A-02", "B-01", "B-02", "C-01"];
+const hariIni = () => new Date().toISOString().split("T")[0];
+const fmtTanggal = (t: string) => {
+  const d = new Date(t);
+  return isNaN(d.getTime()) ? t : d.toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
 };
 
-type QC = {
-  id: number;
-  tanggal: string;
-  status: string;
-  catatan: string;
-  nomor_penerimaan: string;
-  nomor_po: string;
+// Kelas Tailwind yang dipakai berulang (sama dengan halaman Pengadaan)
+const kartu = "rounded-2xl border border-slate-200 bg-white shadow-[0_4px_20px_rgba(15,23,42,0.05)]";
+const input = "w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-300 focus:border-blue-600 focus:ring-4 focus:ring-blue-100 disabled:bg-slate-50";
+const cari = "rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-3 text-sm outline-none transition placeholder:text-slate-300 focus:border-blue-600 focus:ring-4 focus:ring-blue-100";
+const th = "px-5 py-3.5 font-semibold";
+const tombolAksi = "flex items-center gap-1.5 rounded-lg bg-blue-50 px-3.5 py-2 text-xs font-semibold text-blue-700 transition hover:bg-blue-100";
+
+const Garis = ({ className = "" }: { className?: string }) => (
+  <div className={`flex h-1.5 ${className}`}>
+    <span className="flex-1 bg-blue-600" /><span className="flex-1 bg-red-600" /><span className="flex-1 bg-yellow-400" />
+  </div>
+);
+
+function statusStyle(status: string) {
+  if (["Selesai", "Lulus"].includes(status)) return { cls: "bg-blue-50 text-blue-700", dot: "bg-blue-600" };
+  if (["Menunggu QC", "Menunggu"].includes(status)) return { cls: "bg-yellow-100 text-yellow-800", dot: "bg-yellow-500" };
+  if (["Proses", "Diproses", "Ditolak"].includes(status)) return { cls: "bg-red-50 text-red-600", dot: "bg-red-500" };
+  return { cls: "bg-slate-100 text-slate-600", dot: "bg-slate-400" };
+}
+
+const StatusBadge = ({ status, ikon }: { status: string; ikon?: boolean }) => {
+  const s = statusStyle(status);
+  const Ikon = ["Selesai", "Lulus"].includes(status) ? CircleCheck : status === "Ditolak" ? XCircle : Clock3;
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${s.cls}`}>
+      {ikon ? <Ikon size={12} /> : <span className={`h-1.5 w-1.5 rounded-full ${s.dot}`} />}
+      {status}
+    </span>
+  );
 };
 
-type Putaway = {
-  id: number;
-  tanggal: string;
-  status: string;
-  catatan: string;
-  qc_id: number;
-};
+const Field = ({ label, children }: { label: string; children: ReactNode }) => (
+  <div>
+    <label className="mb-1.5 block text-sm font-semibold text-slate-600">{label}</label>
+    {children}
+  </div>
+);
 
-type Produk = {
-  id: number;
-  kode_produk: string;
-  nama: string;
-  stok: number;
-  kategori: string;
-};
+const Kosong = ({ col, ikon, teks }: { col: number; ikon: ReactNode; teks: string }) => (
+  <tr>
+    <td colSpan={col} className="py-16 text-center">
+      <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-blue-50 text-blue-300">{ikon}</div>
+      <p className="text-sm font-medium text-slate-500">{teks}</p>
+    </td>
+  </tr>
+);
 
-type Opname = {
-  id: number;
-  nomor_opname: string;
-  tanggal: string;
-  status: string;
-  jumlah_item: number;
-};
+const Skeleton = ({ col }: { col: number }) => (
+  <>
+    {[0, 1, 2].map((i) => (
+      <tr key={i} className="border-t border-slate-100">
+        <td colSpan={col} className="px-5 py-4"><div className="h-10 animate-pulse rounded-lg bg-slate-100" /></td>
+      </tr>
+    ))}
+  </>
+);
+
+const Modal = ({ judul, sub, onClose, lebar = "max-w-md", children }: { judul: string; sub: string; onClose: () => void; lebar?: string; children: ReactNode }) => (
+  <div className="fixed inset-0 z-[100] flex items-center justify-center bg-blue-950/40 p-4 backdrop-blur-[2px]">
+    <div className={`anim-modal max-h-[92vh] w-full ${lebar} overflow-y-auto rounded-2xl bg-white shadow-2xl`}>
+      <Garis />
+      <div className="p-6">
+        <div className="mb-5 flex items-start justify-between">
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-wide text-red-600">Warehouse operations</p>
+            <h2 className="mt-1 text-xl font-bold text-blue-900">{judul}</h2>
+            <p className="mt-1 text-sm text-slate-400">{sub}</p>
+          </div>
+          <button type="button" onClick={onClose} className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"><X size={20} /></button>
+        </div>
+        {children}
+      </div>
+    </div>
+  </div>
+);
 
 export default function PengelolaanPage() {
-  const [tab, setTab] = useState<"qc" | "putaway" | "opname">("qc");
+  const [tab, setTab] = useState<Tab>("qc");
 
   const [penerimaan, setPenerimaan] = useState<Penerimaan[]>([]);
   const [qc, setQC] = useState<QC[]>([]);
@@ -68,31 +107,48 @@ export default function PengelolaanPage() {
   const [produk, setProduk] = useState<Produk[]>([]);
   const [opname, setOpname] = useState<Opname[]>([]);
 
+  const [memuat, setMemuat] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
 
-  const [showQC, setShowQC] = useState(false);
-  const [showPutaway, setShowPutaway] = useState(false);
+  const [selectedPenerimaan, setSelectedPenerimaan] = useState<Penerimaan | null>(null);
+  const [selectedQC, setSelectedQC] = useState<QC | null>(null);
   const [showOpname, setShowOpname] = useState(false);
 
-  const [selectedPenerimaan, setSelectedPenerimaan] =
-    useState<Penerimaan | null>(null);
+  const [tanggal, setTanggal] = useState(hariIni());
+  const [lokasi, setLokasi] = useState(LOKASI[0]);
+  const [jumlahPutaway, setJumlahPutaway] = useState<Record<number, number>>({});
+  const [stokFisik, setStokFisik] = useState<Record<number, number>>({});
 
-  const [selectedQC, setSelectedQC] = useState<QC | null>(null);
+  const [toast, setToast] = useState<{ ok: boolean; pesan: string } | null>(null);
+  const info = (ok: boolean, pesan: string) => setToast({ ok, pesan });
 
-  const [tanggal, setTanggal] = useState(
-    new Date().toISOString().split("T")[0]
-  );
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3000);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  /* ---------- LOAD DATA ---------- */
 
   async function loadData() {
-    const res = await fetch("/api/warehouse/pengelolaan");
-    const data = await res.json();
-
-    if (data.success) {
-      setPenerimaan(data.penerimaan || []);
-      setQC(data.qc || []);
-      setPutaway(data.putaway || []);
-      setProduk(data.produk || []);
-      setOpname(data.opname || []);
+    try {
+      const res = await fetch(API, { cache: "no-store" });
+      const data = await res.json();
+      if (data.success) {
+        setPenerimaan(data.penerimaan || []);
+        setQC(data.qc || []);
+        setPutaway(data.putaway || []);
+        setProduk(data.produk || []);
+        setOpname(data.opname || []);
+      } else {
+        info(false, data.message || "Gagal mengambil data.");
+      }
+    } catch (e) {
+      console.error(e);
+      info(false, "Tidak dapat terhubung ke server.");
+    } finally {
+      setMemuat(false);
     }
   }
 
@@ -100,735 +156,452 @@ export default function PengelolaanPage() {
     loadData();
   }, []);
 
-  async function simpanQC(status: string) {
-    if (!selectedPenerimaan) return;
+  /* ---------- KIRIM DATA ---------- */
 
-    const res = await fetch("/api/warehouse/pengelolaan", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
+  async function kirim(body: object, sukses: () => void, gagal: string) {
+    try {
+      setLoading(true);
+      const res = await fetch(API, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) return info(false, data.message || gagal);
+      info(true, data.message || "Berhasil disimpan.");
+      sukses();
+      await loadData();
+    } catch (e) {
+      console.error(e);
+      info(false, gagal);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const simpanQC = (status: "Lulus" | "Ditolak") => {
+    if (!selectedPenerimaan) return;
+    kirim(
+      {
         tipe: "qc",
         penerimaan_id: selectedPenerimaan.id,
         tanggal,
         status,
-        catatan:
-          status === "Lulus"
-            ? "Barang sesuai dan kondisi baik."
-            : "Barang tidak memenuhi pemeriksaan.",
-      }),
-    });
-
-    const data = await res.json();
-
-    if (!res.ok) {
-      alert(data.message);
-      return;
-    }
-
-    alert(data.message);
-    setShowQC(false);
-    setSelectedPenerimaan(null);
-    loadData();
-  }
-
-  async function simpanPutaway() {
-    if (!selectedQC) return;
-
-    const items = produk
-      .map((item) => ({
-        produk_id: item.id,
-        jumlah: 0,
-        lokasi: "A-01",
-      }))
-      .filter((item) => item.jumlah > 0);
-
-    const res = await fetch("/api/warehouse/pengelolaan", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
+        catatan: status === "Lulus" ? "Barang sesuai dan kondisi baik." : "Barang tidak memenuhi pemeriksaan.",
       },
-      body: JSON.stringify({
-        tipe: "putaway",
-        qc_id: selectedQC.id,
-        tanggal,
-        items,
-      }),
-    });
+      () => setSelectedPenerimaan(null),
+      "Gagal menyimpan Quality Check."
+    );
+  };
 
-    const data = await res.json();
+  const simpanPutaway = () => {
+    if (!selectedQC) return;
+    const items = produk
+      .filter((p) => (jumlahPutaway[p.id] || 0) > 0)
+      .map((p) => ({ produk_id: p.id, jumlah: jumlahPutaway[p.id], lokasi }));
+    if (!items.length) return info(false, "Isi jumlah minimal satu produk.");
+    kirim({ tipe: "putaway", qc_id: selectedQC.id, tanggal, items }, tutupPutaway, "Gagal menyimpan Putaway.");
+  };
 
-    if (!res.ok) {
-      alert(data.message);
-      return;
-    }
-
-    alert(data.message);
-    setShowPutaway(false);
-    setSelectedQC(null);
-    loadData();
-  }
-
-  async function simpanOpname() {
-    const nomor =
-      "SO-" +
-      new Date().getFullYear() +
-      "-" +
-      String(opname.length + 1).padStart(4, "0");
-
-    const items = produk.map((item) => ({
-      produk_id: item.id,
-      stok_sistem: item.stok,
-      stok_fisik: item.stok,
+  const simpanOpname = () => {
+    const nomor = `SO-${new Date().getFullYear()}-${String(opname.length + 1).padStart(4, "0")}`;
+    const items = produk.map((p) => ({
+      produk_id: p.id,
+      stok_sistem: p.stok,
+      stok_fisik: stokFisik[p.id] ?? p.stok,
       keterangan: "Hasil pengecekan fisik",
     }));
+    kirim({ tipe: "opname", nomor_opname: nomor, tanggal, items, catatan: "Stock opname warehouse." }, tutupOpname, "Gagal menyimpan Stock Opname.");
+  };
 
-    const res = await fetch("/api/warehouse/pengelolaan", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        tipe: "opname",
-        nomor_opname: nomor,
-        tanggal,
-        items,
-        catatan: "Stock opname warehouse.",
-      }),
-    });
+  const tutupPutaway = () => { setSelectedQC(null); setJumlahPutaway({}); setLokasi(LOKASI[0]); };
+  const tutupOpname = () => { setShowOpname(false); setStokFisik({}); };
 
-    const data = await res.json();
+  /* ---------- FILTER & RINGKASAN ---------- */
 
-    if (!res.ok) {
-      alert(data.message);
-      return;
-    }
+  const kw = search.toLowerCase().trim();
 
-    alert(data.message);
-    setShowOpname(false);
-    loadData();
-  }
-
-  const filteredOpname = opname.filter((item) =>
-    item.nomor_opname.toLowerCase().includes(search.toLowerCase())
+  const antrianQC = useMemo(
+    () => penerimaan.filter((x) => x.status !== "Selesai" && `${x.nomor_penerimaan} ${x.nomor_po} ${x.nama_supplier}`.toLowerCase().includes(kw)),
+    [penerimaan, kw]
   );
+  const antrianPutaway = useMemo(
+    () => qc.filter((x) => x.status === "Lulus" && `${x.nomor_penerimaan} ${x.nomor_po} QC-${x.id}`.toLowerCase().includes(kw)),
+    [qc, kw]
+  );
+  const filteredOpname = useMemo(() => opname.filter((x) => x.nomor_opname.toLowerCase().includes(kw)), [opname, kw]);
 
-  const qcMenunggu = penerimaan.filter(
-    (item) => item.status !== "Selesai"
-  ).length;
+  const putawaySelesai = putaway.filter((x) => x.status === "Selesai").length;
+  const opnameBerjalan = opname.filter((x) => x.status === "Proses").length;
+  const selisihOpname = produk.filter((p) => stokFisik[p.id] !== undefined && stokFisik[p.id] !== p.stok).length;
 
-  const putawaySelesai = putaway.filter(
-    (item) => item.status === "Selesai"
-  ).length;
+  const ringkasan = [
+    { label: "Total quality check", nilai: qc.length, note: "Pemeriksaan tercatat", icon: ClipboardCheck },
+    { label: "QC menunggu", nilai: penerimaan.filter((x) => x.status !== "Selesai").length, note: "Barang belum diperiksa", icon: AlertTriangle },
+    { label: "Putaway selesai", nilai: putawaySelesai, note: "Barang sudah ditempatkan", icon: PackageCheck },
+    { label: "Opname berjalan", nilai: opnameBerjalan, note: "Sedang dihitung", icon: ClipboardList },
+  ];
 
-  const opnameBerjalan = opname.filter(
-    (item) => item.status === "Proses"
-  ).length;
+  const tabs = [
+    { id: "qc", label: "Quality check", icon: ClipboardCheck },
+    { id: "putaway", label: "Putaway", icon: PackageCheck },
+    { id: "opname", label: "Stock opname", icon: ClipboardList },
+  ] as const;
+
+  const judul = {
+    qc: { h: "Antrian Quality Check", p: "Periksa barang yang baru diterima", n: antrianQC.length, t: penerimaan.filter((x) => x.status !== "Selesai").length },
+    putaway: { h: "Antrian Putaway", p: "Tempatkan barang yang sudah lulus QC", n: antrianPutaway.length, t: qc.filter((x) => x.status === "Lulus").length },
+    opname: { h: "Riwayat Stock Opname", p: "Perbandingan stok sistem dan stok fisik", n: filteredOpname.length, t: opname.length },
+  }[tab];
 
   return (
-    <div className="flex min-h-screen bg-[#f7f9fc] text-slate-800">
+    <div className="flex min-h-screen bg-white text-slate-800">
+      <style>{`
+        @keyframes munculModal { from { opacity: 0; transform: translateY(12px) scale(.98); } to { opacity: 1; transform: none; } }
+        @keyframes masukToast { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
+        @keyframes naikMuncul { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+        @keyframes melayang { 0%, 100% { transform: translateY(0) rotate(-6deg); } 50% { transform: translateY(-8px) rotate(-3deg); } }
+        .anim-modal { animation: munculModal .22s ease-out; }
+        .anim-toast { animation: masukToast .25s ease-out; }
+        .anim-naik { animation: naikMuncul .5s cubic-bezier(.22,1,.36,1) both; }
+        .anim-melayang { animation: melayang 5s ease-in-out infinite; }
+        @media (prefers-reduced-motion: reduce) { .anim-modal, .anim-toast, .anim-naik, .anim-melayang { animation: none; } }
+      `}</style>
+
       <SidebarWarehouse />
 
       <main className="min-w-0 flex-1">
-        <HeaderWarehouse
-          title="Pengelolaan Gudang"
-          subtitle="Warehouse"
-        />
+        <div className="mx-auto max-w-[1320px] space-y-8 px-4 py-8 sm:px-6 lg:px-8">
+          {/* HERO */}
+          <section className="anim-naik relative overflow-hidden rounded-3xl bg-gradient-to-br from-blue-900 via-blue-800 to-blue-700 px-7 py-8 text-white shadow-xl shadow-blue-100">
+            <div className="pointer-events-none absolute -right-16 -top-20 h-64 w-64 rounded-full bg-yellow-400/20" />
+            <div className="pointer-events-none absolute -bottom-24 right-40 h-56 w-56 rounded-full bg-red-500/20" />
+            <Boxes className="anim-melayang pointer-events-none absolute bottom-6 right-8 hidden h-28 w-28 text-white/15 sm:block" />
 
-        <div className="p-5 sm:p-8">
+            <div className="relative">
+              <div className="flex flex-wrap items-start justify-between gap-5">
+                <div>
+                  <p className="text-xs text-blue-200">Warehouse › Pengelolaan Gudang</p>
+                  <h1 className="mt-2 text-3xl font-bold tracking-tight md:text-4xl">Pengelolaan Gudang</h1>
+                  <p className="mt-2 max-w-lg text-sm leading-relaxed text-blue-100">
+                    Kelola Quality Check, Putaway, dan Stock Opname gudang Indomart dalam satu halaman yang rapi dan terpantau.
+                  </p>
+                </div>
+                <button
+                  onClick={() => { setTab("opname"); setShowOpname(true); }}
+                  className="flex items-center gap-2 rounded-xl bg-yellow-400 px-6 py-3.5 text-sm font-bold text-blue-900 shadow-lg shadow-blue-950/20 transition hover:bg-yellow-300 focus:outline-none focus:ring-4 focus:ring-yellow-200/60"
+                >
+                  <Plus size={18} strokeWidth={2.5} /> Mulai opname
+                </button>
+              </div>
 
-          {/* HERO - DIPERKECIL */}
-          <section className="relative mb-6 overflow-hidden rounded-3xl bg-gradient-to-r from-blue-600 via-blue-500 to-cyan-500 px-6 py-5 text-white shadow-lg shadow-blue-100 sm:px-7 sm:py-6">
-            <div className="relative z-10 max-w-2xl">
-              <p className="mb-1.5 text-[11px] font-medium text-blue-100">
-                Warehouse Operations
-              </p>
-
-              <h2 className="text-xl font-bold tracking-tight sm:text-2xl">
-                Pengelolaan Gudang
-              </h2>
-
-              <p className="mt-1.5 max-w-xl text-[11px] leading-5 text-blue-50 sm:text-xs">
-                Kelola proses Quality Check, Putaway, dan Stock Opname
-                dalam satu halaman warehouse.
-              </p>
-            </div>
-
-            <div className="absolute -right-6 -top-10 h-28 w-28 rounded-full bg-white/10" />
-
-            <div className="absolute -bottom-14 right-16 h-36 w-36 rounded-full bg-white/10" />
-
-            <div className="absolute right-7 top-1/2 hidden -translate-y-1/2 md:block">
-              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/15 backdrop-blur-sm">
-                <Boxes size={32} strokeWidth={1.5} />
+              <div className="mt-7 grid grid-cols-2 gap-3 lg:grid-cols-4">
+                {ringkasan.map(({ label, nilai, note, icon: Icon }) => (
+                  <div key={label} className="rounded-2xl border border-white/15 bg-white/10 p-4 backdrop-blur">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm text-blue-100">{label}</p>
+                      <Icon size={17} className="text-yellow-300" />
+                    </div>
+                    <p className="mt-2 text-3xl font-bold tracking-tight">{memuat ? "..." : nilai.toLocaleString("id-ID")}</p>
+                    <p className="mt-0.5 text-[11px] text-blue-200">{note}</p>
+                  </div>
+                ))}
               </div>
             </div>
           </section>
 
-          {/* SUMMARY */}
-          <div className="mb-6 grid grid-cols-2 gap-4 xl:grid-cols-4">
-
-            <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
-              <div className="mb-4 flex items-center justify-between">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
-                  <ClipboardCheck size={20} />
-                </div>
-
-                <span className="text-[10px] font-semibold text-slate-400">
-                  QUALITY CHECK
-                </span>
+          {/* DAFTAR */}
+          <section className={`${kartu} anim-naik overflow-hidden`} style={{ animationDelay: "120ms" }}>
+            <div className="flex flex-col gap-4 border-b border-slate-100 p-5">
+              <div>
+                <h2 className="text-lg font-bold text-blue-900">{judul.h}</h2>
+                <p className="mt-0.5 text-xs text-slate-400">{judul.p} · Menampilkan {judul.n} dari {judul.t} data</p>
               </div>
 
-              <p className="text-2xl font-bold text-slate-900">
-                {qc.length}
-              </p>
-
-              <p className="mt-1 text-xs text-slate-400">
-                Total Quality Check
-              </p>
-            </div>
-
-            <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
-              <div className="mb-4 flex items-center justify-between">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-50 text-orange-500">
-                  <AlertTriangle size={20} />
+              <div className="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-center">
+                <div className="flex w-full rounded-xl bg-blue-50/70 p-1 md:w-auto">
+                  {tabs.map(({ id, label, icon: Icon }) => (
+                    <button
+                      key={id}
+                      onClick={() => { setTab(id); setSearch(""); }}
+                      className={`flex flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-lg px-4 py-2 text-sm font-semibold transition md:flex-none ${
+                        tab === id ? "bg-blue-700 text-white shadow-md shadow-blue-100" : "text-slate-500 hover:text-blue-700"
+                      }`}
+                    >
+                      <Icon size={15} /> {label}
+                    </button>
+                  ))}
                 </div>
 
-                <span className="text-[10px] font-semibold text-slate-400">
-                  MENUNGGU
-                </span>
-              </div>
-
-              <p className="text-2xl font-bold text-slate-900">
-                {qcMenunggu}
-              </p>
-
-              <p className="mt-1 text-xs text-slate-400">
-                QC Menunggu
-              </p>
-            </div>
-
-            <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
-              <div className="mb-4 flex items-center justify-between">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-green-50 text-green-600">
-                  <PackageCheck size={20} />
-                </div>
-
-                <span className="text-[10px] font-semibold text-slate-400">
-                  PUTAWAY
-                </span>
-              </div>
-
-              <p className="text-2xl font-bold text-slate-900">
-                {putawaySelesai}
-              </p>
-
-              <p className="mt-1 text-xs text-slate-400">
-                Putaway Selesai
-              </p>
-            </div>
-
-            <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
-              <div className="mb-4 flex items-center justify-between">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-50 text-purple-600">
-                  <ClipboardList size={20} />
-                </div>
-
-                <span className="text-[10px] font-semibold text-slate-400">
-                  OPNAME
-                </span>
-              </div>
-
-              <p className="text-2xl font-bold text-slate-900">
-                {opnameBerjalan}
-              </p>
-
-              <p className="mt-1 text-xs text-slate-400">
-                Opname Berjalan
-              </p>
-            </div>
-          </div>
-
-          {/* TAB */}
-          <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
-            <div className="flex rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm">
-              <button
-                onClick={() => setTab("qc")}
-                className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold transition ${
-                  tab === "qc"
-                    ? "bg-blue-600 text-white shadow-sm"
-                    : "text-slate-500 hover:bg-slate-50"
-                }`}
-              >
-                <ClipboardCheck size={16} />
-                Quality Check
-              </button>
-
-              <button
-                onClick={() => setTab("putaway")}
-                className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold transition ${
-                  tab === "putaway"
-                    ? "bg-blue-600 text-white shadow-sm"
-                    : "text-slate-500 hover:bg-slate-50"
-                }`}
-              >
-                <PackageCheck size={16} />
-                Putaway
-              </button>
-
-              <button
-                onClick={() => setTab("opname")}
-                className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold transition ${
-                  tab === "opname"
-                    ? "bg-blue-600 text-white shadow-sm"
-                    : "text-slate-500 hover:bg-slate-50"
-                }`}
-              >
-                <ClipboardList size={16} />
-                Stock Opname
-              </button>
-            </div>
-
-            {tab === "opname" && (
-              <button
-                onClick={() => setShowOpname(true)}
-                className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm shadow-blue-100 transition hover:bg-blue-700"
-              >
-                <Plus size={15} />
-                Mulai Opname
-              </button>
-            )}
-          </div>
-
-          {/* SEARCH */}
-          <div className="mb-5 flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-            <Search size={17} className="text-slate-400" />
-
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Cari data..."
-              className="w-full bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
-            />
-          </div>
-
-          {/* QC */}
-          {tab === "qc" && (
-            <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
-              <div className="flex items-center justify-between border-b border-slate-100 px-5 py-5">
-                <div>
-                  <h2 className="text-sm font-bold text-slate-900">
-                    Quality Check
-                  </h2>
-
-                  <p className="mt-1 text-[11px] text-slate-400">
-                    Pemeriksaan barang yang telah diterima
-                  </p>
-                </div>
-
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
-                  <ClipboardCheck size={18} />
+                <div className="relative md:min-w-[220px] md:flex-1">
+                  <Search size={17} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Cari nomor, PO, supplier..."
+                    className={`${cari} w-full`}
+                  />
                 </div>
               </div>
+            </div>
 
-              <div className="overflow-x-auto">
-                <table className="w-full text-left">
-                  <thead className="bg-slate-50 text-[11px] font-semibold text-slate-500">
-                    <tr>
-                      <th className="px-5 py-3.5">Penerimaan</th>
-                      <th className="px-5 py-3.5">PO</th>
-                      <th className="px-5 py-3.5">Tanggal</th>
-                      <th className="px-5 py-3.5">Status</th>
-                      <th className="px-5 py-3.5">Aksi</th>
+            <div className="overflow-x-auto">
+              {/* QC */}
+              {tab === "qc" && (
+                <table className="w-full min-w-[760px] text-left">
+                  <thead>
+                    <tr className="border-b-2 border-yellow-300 bg-blue-50/70 text-sm text-blue-900">
+                      {["No. Penerimaan", "PO", "Supplier", "Tanggal", "Status"].map((h) => <th key={h} className={th}>{h}</th>)}
+                      <th className={`${th} text-center`}>Aksi</th>
                     </tr>
                   </thead>
-
                   <tbody>
-                    {penerimaan.map((item) => (
-                      <tr
-                        key={item.id}
-                        className="border-b border-slate-100 transition hover:bg-blue-50/40"
-                      >
-                        <td className="px-5 py-4 text-xs font-bold text-orange-600">
-                          {item.nomor_penerimaan}
-                        </td>
-
-                        <td className="px-5 py-4 text-xs font-medium text-slate-700">
-                          {item.nomor_po}
-                        </td>
-
-                        <td className="px-5 py-4 text-xs text-slate-500">
-                          {item.tanggal}
-                        </td>
-
+                    {memuat && <Skeleton col={6} />}
+                    {!memuat && antrianQC.map((item) => (
+                      <tr key={item.id} className="border-t border-slate-100 transition hover:bg-blue-50/40">
+                        <td className="whitespace-nowrap px-5 py-4 font-mono text-sm font-semibold text-blue-800">{item.nomor_penerimaan}</td>
+                        <td className="whitespace-nowrap px-5 py-4 text-sm font-semibold text-slate-700">{item.nomor_po}</td>
                         <td className="px-5 py-4">
-                          <span className="rounded-full bg-orange-50 px-2.5 py-1 text-[10px] font-bold text-orange-600">
-                            Menunggu QC
-                          </span>
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-600 text-white"><Truck size={17} /></div>
+                            <span className="text-sm font-semibold text-slate-800">{item.nama_supplier}</span>
+                          </div>
                         </td>
-
+                        <td className="whitespace-nowrap px-5 py-4 text-sm text-slate-600">{fmtTanggal(item.tanggal)}</td>
+                        <td className="px-5 py-4"><StatusBadge status="Menunggu QC" ikon /></td>
                         <td className="px-5 py-4">
-                          <button
-                            onClick={() => {
-                              setSelectedPenerimaan(item);
-                              setShowQC(true);
-                            }}
-                            className="rounded-lg bg-blue-50 px-3 py-2 text-[10px] font-bold text-blue-600 transition hover:bg-blue-100"
-                          >
-                            Periksa
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-
-                    {!penerimaan.length && (
-                      <tr>
-                        <td
-                          colSpan={5}
-                          className="py-12 text-center text-xs text-slate-400"
-                        >
-                          Belum ada data Quality Check.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {/* PUTAWAY */}
-          {tab === "putaway" && (
-            <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
-              <div className="flex items-center justify-between border-b border-slate-100 px-5 py-5">
-                <div>
-                  <h2 className="text-sm font-bold text-slate-900">
-                    Putaway
-                  </h2>
-
-                  <p className="mt-1 text-[11px] text-slate-400">
-                    Penempatan barang yang sudah lolos QC
-                  </p>
-                </div>
-
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-green-50 text-green-600">
-                  <PackageCheck size={18} />
-                </div>
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="w-full text-left">
-                  <thead className="bg-slate-50 text-[11px] font-semibold text-slate-500">
-                    <tr>
-                      <th className="px-5 py-3.5">QC ID</th>
-                      <th className="px-5 py-3.5">Tanggal</th>
-                      <th className="px-5 py-3.5">Status</th>
-                      <th className="px-5 py-3.5">Aksi</th>
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {qc
-                      .filter((item) => item.status === "Lulus")
-                      .map((item) => (
-                        <tr
-                          key={item.id}
-                          className="border-b border-slate-100 transition hover:bg-blue-50/40"
-                        >
-                          <td className="px-5 py-4 text-xs font-bold text-blue-600">
-                            QC-{item.id}
-                          </td>
-
-                          <td className="px-5 py-4 text-xs text-slate-600">
-                            {item.tanggal}
-                          </td>
-
-                          <td className="px-5 py-4">
-                            <span className="rounded-full bg-green-50 px-2.5 py-1 text-[10px] font-bold text-green-600">
-                              Lulus QC
-                            </span>
-                          </td>
-
-                          <td className="px-5 py-4">
-                            <button
-                              onClick={() => {
-                                setSelectedQC(item);
-                                setShowPutaway(true);
-                              }}
-                              className="rounded-lg bg-blue-50 px-3 py-2 text-[10px] font-bold text-blue-600 transition hover:bg-blue-100"
-                            >
-                              <span className="flex items-center gap-1">
-                                <MapPin size={12} />
-                                Putaway
-                              </span>
+                          <div className="flex justify-center">
+                            <button onClick={() => setSelectedPenerimaan(item)} className={tombolAksi}>
+                              <ClipboardCheck size={14} /> Periksa
                             </button>
-                          </td>
-                        </tr>
-                      ))}
-
-                    {!qc.filter((item) => item.status === "Lulus").length && (
-                      <tr>
-                        <td
-                          colSpan={4}
-                          className="py-12 text-center text-xs text-slate-400"
-                        >
-                          Belum ada data Putaway.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {/* OPNAME */}
-          {tab === "opname" && (
-            <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
-              <div className="flex items-center justify-between border-b border-slate-100 px-5 py-5">
-                <div>
-                  <h2 className="text-sm font-bold text-slate-900">
-                    Stock Opname
-                  </h2>
-
-                  <p className="mt-1 text-[11px] text-slate-400">
-                    Perbandingan stok sistem dan stok fisik
-                  </p>
-                </div>
-
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-purple-50 text-purple-600">
-                  <ClipboardList size={18} />
-                </div>
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="w-full text-left">
-                  <thead className="bg-slate-50 text-[11px] font-semibold text-slate-500">
-                    <tr>
-                      <th className="px-5 py-3.5">Nomor</th>
-                      <th className="px-5 py-3.5">Tanggal</th>
-                      <th className="px-5 py-3.5">Item</th>
-                      <th className="px-5 py-3.5">Status</th>
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {filteredOpname.map((item) => (
-                      <tr
-                        key={item.id}
-                        className="border-b border-slate-100 transition hover:bg-blue-50/40"
-                      >
-                        <td className="px-5 py-4 text-xs font-bold text-blue-600">
-                          {item.nomor_opname}
-                        </td>
-
-                        <td className="px-5 py-4 text-xs text-slate-600">
-                          {item.tanggal}
-                        </td>
-
-                        <td className="px-5 py-4 text-xs text-slate-600">
-                          {item.jumlah_item} produk
-                        </td>
-
-                        <td className="px-5 py-4">
-                          <span
-                            className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${
-                              item.status === "Selesai"
-                                ? "bg-green-50 text-green-600"
-                                : item.status === "Proses"
-                                  ? "bg-orange-50 text-orange-600"
-                                  : "bg-slate-100 text-slate-600"
-                            }`}
-                          >
-                            {item.status}
-                          </span>
+                          </div>
                         </td>
                       </tr>
                     ))}
-
-                    {!filteredOpname.length && (
-                      <tr>
-                        <td
-                          colSpan={4}
-                          className="py-12 text-center text-xs text-slate-400"
-                        >
-                          Belum ada Stock Opname.
-                        </td>
-                      </tr>
+                    {!memuat && !antrianQC.length && (
+                      <Kosong col={6} ikon={<ClipboardCheck size={30} />} teks={search ? "Data tidak ditemukan" : "Tidak ada barang yang menunggu QC"} />
                     )}
                   </tbody>
                 </table>
-              </div>
+              )}
+
+              {/* PUTAWAY */}
+              {tab === "putaway" && (
+                <table className="w-full min-w-[640px] text-left">
+                  <thead>
+                    <tr className="border-b-2 border-yellow-300 bg-blue-50/70 text-sm text-blue-900">
+                      {["QC", "Penerimaan", "Tanggal QC", "Status"].map((h) => <th key={h} className={th}>{h}</th>)}
+                      <th className={`${th} text-center`}>Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {memuat && <Skeleton col={5} />}
+                    {!memuat && antrianPutaway.map((item) => (
+                      <tr key={item.id} className="border-t border-slate-100 transition hover:bg-blue-50/40">
+                        <td className="whitespace-nowrap px-5 py-4 font-mono text-sm font-semibold text-blue-800">QC-{item.id}</td>
+                        <td className="px-5 py-4">
+                          <p className="text-sm font-semibold text-slate-800">{item.nomor_penerimaan}</p>
+                          <p className="text-xs text-slate-400">{item.nomor_po}</p>
+                        </td>
+                        <td className="whitespace-nowrap px-5 py-4 text-sm text-slate-600">{fmtTanggal(item.tanggal)}</td>
+                        <td className="px-5 py-4"><StatusBadge status="Lulus" ikon /></td>
+                        <td className="px-5 py-4">
+                          <div className="flex justify-center">
+                            <button onClick={() => setSelectedQC(item)} className={tombolAksi}>
+                              <MapPin size={14} /> Putaway
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                    {!memuat && !antrianPutaway.length && (
+                      <Kosong col={5} ikon={<PackageCheck size={30} />} teks={search ? "Data tidak ditemukan" : "Belum ada barang yang siap di-putaway"} />
+                    )}
+                  </tbody>
+                </table>
+              )}
+
+              {/* OPNAME */}
+              {tab === "opname" && (
+                <table className="w-full min-w-[640px] text-left">
+                  <thead>
+                    <tr className="border-b-2 border-yellow-300 bg-blue-50/70 text-sm text-blue-900">
+                      {["No. Opname", "Tanggal", "Item", "Status"].map((h) => <th key={h} className={th}>{h}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {memuat && <Skeleton col={4} />}
+                    {!memuat && filteredOpname.map((item) => (
+                      <tr key={item.id} className="border-t border-slate-100 transition hover:bg-blue-50/40">
+                        <td className="whitespace-nowrap px-5 py-4 font-mono text-sm font-semibold text-blue-800">{item.nomor_opname}</td>
+                        <td className="whitespace-nowrap px-5 py-4 text-sm text-slate-600">{fmtTanggal(item.tanggal)}</td>
+                        <td className="px-5 py-4"><span className="rounded-full bg-yellow-100 px-3 py-1 text-sm font-bold text-yellow-800">{item.jumlah_item} produk</span></td>
+                        <td className="px-5 py-4"><StatusBadge status={item.status} ikon /></td>
+                      </tr>
+                    ))}
+                    {!memuat && !filteredOpname.length && (
+                      <Kosong col={4} ikon={<ClipboardList size={30} />} teks={search ? "Opname tidak ditemukan" : "Belum ada Stock Opname"} />
+                    )}
+                  </tbody>
+                </table>
+              )}
             </div>
-          )}
+          </section>
         </div>
       </main>
 
-      {/* MODAL QC */}
-      {showQC && selectedPenerimaan && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
-            <div className="mb-5 flex items-center justify-between">
-              <div>
-                <h2 className="font-bold text-slate-900">
-                  Quality Check
-                </h2>
-
-                <p className="mt-1 text-[11px] text-slate-400">
-                  {selectedPenerimaan.nomor_penerimaan}
-                </p>
-              </div>
-
-              <button
-                onClick={() => setShowQC(false)}
-                className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100"
-              >
-                <X size={17} />
-              </button>
-            </div>
-
-            <div className="mb-5 rounded-2xl bg-slate-50 p-4">
-              <p className="text-[10px] text-slate-400">
-                Supplier
-              </p>
-
-              <p className="mt-1 text-sm font-bold text-slate-800">
-                {selectedPenerimaan.nama_supplier}
-              </p>
-
-              <p className="mt-1 text-[11px] text-slate-500">
-                PO: {selectedPenerimaan.nomor_po}
-              </p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                onClick={() => simpanQC("Lulus")}
-                className="rounded-2xl bg-green-600 px-4 py-3 text-xs font-bold text-white transition hover:bg-green-700"
-              >
-                <CheckCircle2 size={17} className="mx-auto mb-1" />
-                Lulus QC
-              </button>
-
-              <button
-                onClick={() => simpanQC("Ditolak")}
-                className="rounded-2xl bg-red-500 px-4 py-3 text-xs font-bold text-white transition hover:bg-red-600"
-              >
-                <AlertTriangle size={17} className="mx-auto mb-1" />
-                Tolak
-              </button>
-            </div>
+      {/* TOAST */}
+      {toast && (
+        <div className="anim-toast fixed right-5 top-5 z-[200] flex max-w-sm items-start gap-3 rounded-xl border border-slate-100 bg-white p-4 shadow-2xl">
+          {toast.ok ? <CheckCircle2 size={22} className="mt-0.5 shrink-0 text-blue-700" /> : <AlertCircle size={22} className="mt-0.5 shrink-0 text-red-600" />}
+          <div>
+            <p className="text-sm font-bold text-slate-800">{toast.ok ? "Berhasil" : "Gagal"}</p>
+            <p className="mt-0.5 text-sm text-slate-500">{toast.pesan}</p>
           </div>
+          <div className={`absolute inset-x-0 bottom-0 h-1 rounded-b-xl ${toast.ok ? "bg-yellow-400" : "bg-red-600"}`} />
         </div>
       )}
 
-      {/* MODAL PUTAWAY */}
-      {showPutaway && selectedQC && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
-            <div className="mb-5 flex items-center justify-between">
-              <div>
-                <h2 className="font-bold text-slate-900">
-                  Putaway Barang
-                </h2>
-
-                <p className="mt-1 text-[11px] text-slate-400">
-                  QC-{selectedQC.id}
-                </p>
-              </div>
-
-              <button
-                onClick={() => setShowPutaway(false)}
-                className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100"
-              >
-                <X size={17} />
-              </button>
-            </div>
-
-            <div className="mb-5 rounded-2xl bg-blue-50 p-4">
-              <p className="text-xs font-bold text-blue-700">
-                Barang telah lulus Quality Check.
-              </p>
-
-              <p className="mt-1 text-[11px] text-blue-600">
-                Tentukan lokasi penyimpanan barang.
-              </p>
-            </div>
-
-            <label className="mb-2 block text-[11px] font-bold text-slate-700">
-              Lokasi Gudang
-            </label>
-
-            <select
-              className="mb-5 w-full rounded-xl border border-slate-200 px-3 py-3 text-xs outline-none focus:border-blue-400"
-              defaultValue="A-01"
-            >
-              <option>A-01</option>
-              <option>A-02</option>
-              <option>B-01</option>
-              <option>B-02</option>
-              <option>C-01</option>
-            </select>
-
-            <button
-              onClick={simpanPutaway}
-              className="w-full rounded-xl bg-blue-600 py-3 text-xs font-bold text-white transition hover:bg-blue-700"
-            >
-              Selesaikan Putaway
+      {/* MODAL QC */}
+      {selectedPenerimaan && (
+        <Modal judul="Quality Check" sub={selectedPenerimaan.nomor_penerimaan} onClose={() => setSelectedPenerimaan(null)}>
+          <div className="mb-4 rounded-2xl border border-slate-100 bg-blue-50/60 p-4">
+            <p className="text-xs text-slate-400">Supplier</p>
+            <p className="mt-1 text-sm font-bold text-blue-900">{selectedPenerimaan.nama_supplier}</p>
+            <p className="mt-1 text-xs text-slate-500">PO: {selectedPenerimaan.nomor_po}</p>
+          </div>
+          <Field label="Tanggal pemeriksaan">
+            <input type="date" value={tanggal} onChange={(e) => setTanggal(e.target.value)} disabled={loading} className={input} />
+          </Field>
+          <div className="mt-5 grid grid-cols-2 gap-3">
+            <button onClick={() => simpanQC("Ditolak")} disabled={loading} className="flex items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-3 text-sm font-semibold text-white shadow-md shadow-red-100 transition hover:bg-red-700 disabled:opacity-60">
+              <AlertTriangle size={16} /> Tolak
+            </button>
+            <button onClick={() => simpanQC("Lulus")} disabled={loading} className="flex items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 py-3 text-sm font-semibold text-white shadow-md shadow-blue-100 transition hover:bg-blue-800 disabled:opacity-60">
+              <CheckCircle2 size={16} /> {loading ? "Memproses..." : "Lulus QC"}
             </button>
           </div>
-        </div>
+        </Modal>
+      )}
+
+      {/* MODAL PUTAWAY */}
+      {selectedQC && (
+        <Modal judul="Putaway barang" sub={`QC-${selectedQC.id} · ${selectedQC.nomor_penerimaan}`} onClose={tutupPutaway} lebar="max-w-2xl">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field label="Lokasi gudang">
+              <select value={lokasi} onChange={(e) => setLokasi(e.target.value)} disabled={loading} className={input}>
+                {LOKASI.map((l) => <option key={l}>{l}</option>)}
+              </select>
+            </Field>
+            <Field label="Tanggal">
+              <input type="date" value={tanggal} onChange={(e) => setTanggal(e.target.value)} disabled={loading} className={input} />
+            </Field>
+          </div>
+
+          <div className="mt-5 overflow-hidden rounded-2xl border border-slate-200">
+            <div className="border-b border-yellow-300 bg-blue-50/70 px-4 py-3">
+              <p className="text-sm font-bold text-blue-900">Jumlah yang ditempatkan</p>
+              <p className="mt-0.5 text-xs text-slate-400">Isi jumlah untuk produk yang masuk ke lokasi {lokasi}</p>
+            </div>
+            <div className="max-h-64 divide-y divide-slate-100 overflow-y-auto">
+              {produk.map((p) => (
+                <div key={p.id} className="flex items-center gap-3 px-4 py-2.5">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-slate-800">{p.nama}</p>
+                    <p className="font-mono text-xs text-slate-400">{p.kode_produk}</p>
+                  </div>
+                  <input
+                    type="number"
+                    min={0}
+                    value={jumlahPutaway[p.id] ?? ""}
+                    onChange={(e) => setJumlahPutaway({ ...jumlahPutaway, [p.id]: Math.max(0, Number(e.target.value) || 0) })}
+                    placeholder="0"
+                    disabled={loading}
+                    className={`${input} !w-24 !py-2 text-center`}
+                  />
+                </div>
+              ))}
+              {!produk.length && <p className="px-4 py-8 text-center text-sm text-slate-400">Belum ada produk.</p>}
+            </div>
+          </div>
+
+          <div className="mt-6 flex justify-end gap-2">
+            <button type="button" onClick={tutupPutaway} disabled={loading} className="rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-500 transition hover:bg-slate-100 disabled:opacity-50">Batal</button>
+            <button onClick={simpanPutaway} disabled={loading} className="rounded-xl bg-blue-700 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-blue-100 transition hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-60">
+              {loading ? "Menyimpan..." : "Selesaikan putaway"}
+            </button>
+          </div>
+        </Modal>
       )}
 
       {/* MODAL OPNAME */}
       {showOpname && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
-            <div className="mb-5 flex items-center justify-between">
+        <Modal judul="Mulai stock opname" sub="Masukkan hasil hitung fisik tiap produk" onClose={tutupOpname} lebar="max-w-3xl">
+          <div className="max-w-xs">
+            <Field label="Tanggal opname">
+              <input type="date" value={tanggal} onChange={(e) => setTanggal(e.target.value)} disabled={loading} className={input} />
+            </Field>
+          </div>
+
+          <div className="mt-5 overflow-hidden rounded-2xl border border-slate-200">
+            <div className="flex items-center justify-between border-b border-yellow-300 bg-blue-50/70 px-4 py-3">
               <div>
-                <h2 className="font-bold text-slate-900">
-                  Mulai Stock Opname
-                </h2>
-
-                <p className="mt-1 text-[11px] text-slate-400">
-                  Pengecekan stok seluruh produk
-                </p>
+                <p className="text-sm font-bold text-blue-900">{produk.length} produk akan diperiksa</p>
+                <p className="mt-0.5 text-xs text-slate-400">Kosongkan kolom fisik jika stok sama dengan sistem</p>
               </div>
-
-              <button
-                onClick={() => setShowOpname(false)}
-                className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100"
-              >
-                <X size={17} />
-              </button>
+              {selisihOpname > 0 && (
+                <span className="rounded-full bg-red-50 px-3 py-1 text-xs font-semibold text-red-600">{selisihOpname} selisih</span>
+              )}
             </div>
 
-            <div className="mb-5 rounded-2xl bg-orange-50 p-4">
-              <p className="text-xs font-bold text-orange-700">
-                {produk.length} produk akan diperiksa.
-              </p>
-
-              <p className="mt-1 text-[11px] text-orange-600">
-                Sistem akan mencatat stok sistem dan hasil fisik.
-              </p>
+            <div className="hidden grid-cols-[1fr_90px_110px_80px] gap-3 border-b border-slate-100 px-4 py-2 text-xs font-semibold text-slate-400 md:grid">
+              <span>Produk</span><span className="text-center">Sistem</span><span className="text-center">Fisik</span><span className="text-center">Selisih</span>
             </div>
 
-            <input
-              type="date"
-              value={tanggal}
-              onChange={(e) => setTanggal(e.target.value)}
-              className="mb-5 w-full rounded-xl border border-slate-200 px-3 py-3 text-xs outline-none focus:border-blue-400"
-            />
+            <div className="max-h-72 divide-y divide-slate-100 overflow-y-auto">
+              {produk.map((p) => {
+                const fisik = stokFisik[p.id];
+                const selisih = fisik === undefined ? 0 : fisik - p.stok;
+                return (
+                  <div key={p.id} className="grid grid-cols-[1fr_auto] items-center gap-3 px-4 py-2.5 md:grid-cols-[1fr_90px_110px_80px]">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-slate-800">{p.nama}</p>
+                      <p className="font-mono text-xs text-slate-400">{p.kode_produk}</p>
+                    </div>
+                    <span className="hidden text-center text-sm font-semibold text-slate-600 md:block">{p.stok}</span>
+                    <input
+                      type="number"
+                      min={0}
+                      value={fisik ?? ""}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        const next = { ...stokFisik };
+                        if (v === "") delete next[p.id];
+                        else next[p.id] = Math.max(0, Number(v) || 0);
+                        setStokFisik(next);
+                      }}
+                      placeholder={String(p.stok)}
+                      disabled={loading}
+                      className={`${input} !py-2 text-center`}
+                    />
+                    <span className={`hidden text-center text-sm font-bold md:block ${selisih === 0 ? "text-slate-300" : selisih > 0 ? "text-blue-700" : "text-red-600"}`}>
+                      {selisih > 0 ? `+${selisih}` : selisih}
+                    </span>
+                  </div>
+                );
+              })}
+              {!produk.length && <p className="px-4 py-8 text-center text-sm text-slate-400">Belum ada produk.</p>}
+            </div>
+          </div>
 
-            <button
-              onClick={simpanOpname}
-              className="w-full rounded-xl bg-blue-600 py-3 text-xs font-bold text-white transition hover:bg-blue-700"
-            >
-              Simpan Stock Opname
+          <div className="mt-6 flex justify-end gap-2">
+            <button type="button" onClick={tutupOpname} disabled={loading} className="rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-500 transition hover:bg-slate-100 disabled:opacity-50">Batal</button>
+            <button onClick={simpanOpname} disabled={loading || !produk.length} className="rounded-xl bg-blue-700 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-blue-100 transition hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-60">
+              {loading ? "Menyimpan..." : "Simpan stock opname"}
             </button>
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   );
