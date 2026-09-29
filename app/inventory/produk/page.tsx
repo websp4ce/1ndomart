@@ -6,7 +6,7 @@ import SidebarInventory from "@/app/components/SidebarInventory";
 import {
   Package, Tags, Boxes, AlertTriangle, Plus, Pencil, Trash2, X, Search, Filter,
   ChevronLeft, ChevronRight, CalendarDays, Utensils, Coffee, Home, HeartPulse,
-  Sparkles, MoreHorizontal, CheckCircle2, AlertCircle,
+  Sparkles, MoreHorizontal, CheckCircle2, AlertCircle, Menu,
 } from "lucide-react";
 
 type Produk = { id: number; kode_produk: string; nama: string; kategori_id: number | null; kategori: string | null; harga: number; stok: number };
@@ -50,7 +50,7 @@ const Garis = ({ className = "" }: { className?: string }) => (
 );
 
 const Overlay = ({ children }: { children: ReactNode }) => (
-  <div className="fixed inset-0 z-[100] flex items-center justify-center bg-blue-950/40 p-4 backdrop-blur-[2px]">{children}</div>
+  <div className="fixed inset-0 z-[100] flex items-end justify-center bg-blue-950/40 p-3 backdrop-blur-[2px] sm:items-center sm:p-4">{children}</div>
 );
 
 // Modal form: dipakai untuk produk dan kategori
@@ -59,18 +59,18 @@ const Modal = ({ judul, sub, onClose, onSubmit, loading, tombol, maxW = "max-w-m
   loading: boolean; tombol: string; maxW?: string; children: ReactNode;
 }) => (
   <Overlay>
-    <form onSubmit={onSubmit} className={`anim-modal w-full ${maxW} overflow-hidden rounded-2xl bg-white shadow-2xl`}>
+    <form onSubmit={onSubmit} className={`anim-modal max-h-[92vh] w-full ${maxW} overflow-y-auto rounded-2xl bg-white shadow-2xl`}>
       <Garis />
-      <div className="p-6">
-        <div className="mb-5 flex items-start justify-between">
-          <div>
-            <h2 className="text-xl font-bold text-blue-900">{judul}</h2>
+      <div className="p-5 sm:p-6">
+        <div className="mb-5 flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-lg font-bold text-blue-900 sm:text-xl">{judul}</h2>
             <p className="mt-1 text-sm text-slate-400">{sub}</p>
           </div>
-          <button type="button" onClick={onClose} className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"><X size={20} /></button>
+          <button type="button" onClick={onClose} aria-label="Tutup" className="shrink-0 rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"><X size={20} /></button>
         </div>
         {children}
-        <div className="mt-6 flex justify-end gap-2">
+        <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <button type="button" onClick={onClose} disabled={loading} className={btnBatal}>Batal</button>
           <button type="submit" disabled={loading} className={btnBiru}>{loading ? "Menyimpan..." : tombol}</button>
         </div>
@@ -103,6 +103,7 @@ export default function ProdukPage() {
   const [namaKategori, setNamaKategori] = useState("");
   const [konfirmasi, setKonfirmasi] = useState<{ judul: string; isi: ReactNode; aksi: () => Promise<void> } | null>(null);
   const [toast, setToast] = useState<{ ok: boolean; pesan: string } | null>(null);
+  const [menuBuka, setMenuBuka] = useState(false);
 
   const info = (ok: boolean, pesan: string) => setToast({ ok, pesan });
 
@@ -220,33 +221,47 @@ export default function ProdukPage() {
 
   const set = (k: keyof typeof formKosong) => (e: { target: { value: string } }) => setForm({ ...form, [k]: e.target.value });
 
+  const Aksi = ({ p }: { p: Produk }) => (
+    <div className="flex justify-center gap-1">
+      <button onClick={() => bukaProduk(p)} title="Edit produk" aria-label="Edit produk" className="rounded-lg p-2 text-blue-700 transition hover:bg-blue-100"><Pencil size={17} /></button>
+      <button onClick={() => mintaHapus("Hapus produk?", p.nama, API_PRODUK, p.id)} title="Hapus produk" aria-label="Hapus produk" className="rounded-lg p-2 text-red-600 transition hover:bg-red-100"><Trash2 size={17} /></button>
+    </div>
+  );
+
   return (
     <div className="flex min-h-screen overflow-x-clip bg-white text-slate-800">
       <style>{`
         @keyframes munculModal { from { opacity: 0; transform: translateY(12px) scale(.98); } to { opacity: 1; transform: none; } }
-        @keyframes masukToast { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
+        @keyframes masukToast { from { opacity: 0; transform: translateY(-12px); } to { opacity: 1; transform: none; } }
         .anim-modal { animation: munculModal .22s ease-out; }
         .anim-toast { animation: masukToast .25s ease-out; }
+        /* tombol hapus kategori: muncul saat hover di desktop, selalu terlihat di layar sentuh */
+        @media (hover: hover) { .hapus-kat { display: none; } .group:hover .hapus-kat, .hapus-kat:focus { display: block; } }
         @media (prefers-reduced-motion: reduce) { .anim-modal, .anim-toast { animation: none; } }
       `}</style>
 
-      {/* SIDEBAR (ikut bergulir bersama halaman) */}
-      <aside className="hidden w-[235px] shrink-0 self-stretch border-r border-slate-200 bg-white lg:block [&>*]:!static [&>*]:!border-r-0 [&_.fixed]:!static [&_.sticky]:!static">
-        <SidebarInventory />
-      </aside>
+      {/* SIDEBAR: tetap di lg+, drawer di HP/tablet (tombol ☰ ada di header) */}
+      <SidebarInventory open={menuBuka} onClose={() => setMenuBuka(false)} />
 
       <main className="min-w-0 flex-1">
         {/* HEADER */}
         <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur-xl">
           <Garis className="!h-1" />
-          <div className="flex h-16 items-center justify-between gap-4 px-5 lg:px-8">
-            <div className="flex items-center gap-2.5 text-sm text-slate-500">
-              <CalendarDays size={17} className="text-blue-700" />
-              <span className="hidden sm:inline">{tanggal || " "}</span>
-              <span className="font-semibold text-blue-900 sm:hidden">Inventory</span>
+          <div className="flex h-14 items-center justify-between gap-3 px-3 sm:h-16 sm:gap-4 sm:px-5 lg:px-8">
+            <div className="flex min-w-0 items-center gap-2 text-sm text-slate-500 sm:gap-2.5">
+              <button
+                onClick={() => setMenuBuka(true)}
+                aria-label="Buka menu"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-blue-900 transition hover:bg-slate-100 focus:outline-none focus:ring-4 focus:ring-blue-100 lg:hidden"
+              >
+                <Menu size={22} />
+              </button>
+              <CalendarDays size={17} className="hidden shrink-0 text-blue-700 sm:block" />
+              <span className="hidden truncate sm:inline">{tanggal || " "}</span>
+              <span className="truncate font-semibold text-blue-900 sm:hidden">Inventory</span>
             </div>
-            <button onClick={() => router.push("/dashboard/inventory")} title="Ke dashboard inventory" className="flex items-center gap-3 rounded-xl px-2 py-1.5 transition hover:bg-slate-50">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-700 text-sm font-bold text-white ring-2 ring-yellow-400 ring-offset-2">A</div>
+            <button onClick={() => router.push("/dashboard/inventory")} title="Ke dashboard inventory" className="flex shrink-0 items-center gap-3 rounded-xl px-1 py-1.5 transition hover:bg-slate-50 sm:px-2">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-700 text-sm font-bold text-white ring-2 ring-yellow-400 ring-offset-2 sm:h-10 sm:w-10">A</div>
               <div className="hidden text-left leading-tight sm:block">
                 <p className="text-sm font-bold text-blue-900">Admin</p>
                 <p className="text-xs text-slate-400">Inventory</p>
@@ -255,30 +270,30 @@ export default function ProdukPage() {
           </div>
         </header>
 
-        <div className="mx-auto max-w-[1320px] space-y-8 px-4 py-8 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-[1320px] space-y-6 px-3 py-5 sm:space-y-8 sm:px-6 sm:py-8 lg:px-8">
           {/* HERO */}
-          <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-blue-900 via-blue-800 to-blue-700 px-7 py-8 text-white shadow-xl shadow-blue-100">
+          <section className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-blue-900 via-blue-800 to-blue-700 px-4 py-6 text-white shadow-xl shadow-blue-100 sm:rounded-3xl sm:px-7 sm:py-8">
             <div className="pointer-events-none absolute -right-16 -top-20 h-64 w-64 rounded-full bg-yellow-400/20" />
             <div className="pointer-events-none absolute -bottom-24 right-40 h-56 w-56 rounded-full bg-red-500/20" />
             <div className="relative">
-              <div className="flex flex-wrap items-start justify-between gap-5">
-                <div>
+              <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between sm:gap-5">
+                <div className="min-w-0">
                   <p className="text-xs text-blue-200">Inventory › Produk & Kategori</p>
-                  <h1 className="mt-2 text-3xl font-bold tracking-tight md:text-4xl">Produk & Kategori</h1>
+                  <h1 className="mt-2 text-2xl font-bold tracking-tight sm:text-3xl md:text-4xl">Produk & Kategori</h1>
                   <p className="mt-2 max-w-lg text-sm leading-relaxed text-blue-100">Kelola data produk dan kategori produk Indomart dengan mudah.</p>
                 </div>
-                <button onClick={() => bukaProduk()} className="flex items-center gap-2 rounded-xl bg-yellow-400 px-6 py-3.5 text-sm font-bold text-blue-900 shadow-lg shadow-blue-950/20 transition hover:bg-yellow-300 focus:outline-none focus:ring-4 focus:ring-yellow-200/60">
+                <button onClick={() => bukaProduk()} className="flex w-full items-center justify-center gap-2 rounded-xl bg-yellow-400 px-6 py-3 text-sm font-bold text-blue-900 shadow-lg shadow-blue-950/20 transition hover:bg-yellow-300 focus:outline-none focus:ring-4 focus:ring-yellow-200/60 sm:w-auto sm:py-3.5">
                   <Plus size={18} strokeWidth={2.5} /> Tambah produk
                 </button>
               </div>
-              <div className="mt-7 grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <div className="mt-5 grid grid-cols-2 gap-2.5 sm:mt-7 sm:gap-3 lg:grid-cols-4">
                 {ringkasan.map(({ label, nilai, icon: Icon }) => (
-                  <div key={label} className="rounded-2xl border border-white/15 bg-white/10 p-4 backdrop-blur">
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm text-blue-100">{label}</p>
-                      <Icon size={17} className="text-yellow-300" />
+                  <div key={label} className="min-w-0 rounded-2xl border border-white/15 bg-white/10 p-3 backdrop-blur sm:p-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="truncate text-xs text-blue-100 sm:text-sm">{label}</p>
+                      <Icon size={17} className="shrink-0 text-yellow-300" />
                     </div>
-                    <p className="mt-2 text-3xl font-bold tracking-tight">{memuat ? "..." : nilai.toLocaleString("id-ID")}</p>
+                    <p className="mt-2 truncate text-2xl font-bold tracking-tight sm:text-3xl">{memuat ? "..." : nilai.toLocaleString("id-ID")}</p>
                   </div>
                 ))}
               </div>
@@ -286,10 +301,10 @@ export default function ProdukPage() {
           </section>
 
           {/* KATEGORI */}
-          <section className={`${kartu} p-5`}>
+          <section className={`${kartu} p-4 sm:p-5`}>
             <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h2 className="text-lg font-bold text-blue-900">Kategori</h2>
+                <h2 className="text-base font-bold text-blue-900 sm:text-lg">Kategori</h2>
                 <p className="mt-0.5 text-xs text-slate-400">Klik kategori untuk memfilter daftar produk di bawah.</p>
               </div>
               <button onClick={() => setShowKategori(true)} className="flex items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-red-100 transition hover:bg-red-700">
@@ -297,7 +312,7 @@ export default function ProdukPage() {
               </button>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+            <div className="grid grid-cols-1 gap-2.5 min-[420px]:grid-cols-2 sm:gap-3 md:grid-cols-3 xl:grid-cols-6">
               {!memuat && kategori.length === 0 && (
                 <div className="col-span-full py-6 text-center text-sm text-slate-400">Belum ada kategori. Klik "Tambah kategori" untuk membuat yang pertama.</div>
               )}
@@ -308,13 +323,13 @@ export default function ProdukPage() {
                   <div key={k.id} onClick={() => setFilterKategori(aktif ? "" : k.nama)}
                     className={`group relative flex cursor-pointer items-center gap-3 rounded-xl border px-3 py-3 transition ${aktif ? "border-blue-600 bg-blue-50 ring-2 ring-blue-100" : "border-slate-200 hover:border-blue-300 hover:bg-blue-50/40"}`}>
                     <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${warna[i % 3]}`}><Icon size={18} /></div>
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1 pr-5">
                       <p className="truncate text-sm font-semibold text-slate-700">{k.nama}</p>
                       <p className="text-xs text-slate-400">{produk.filter((p) => p.kategori === k.nama).length} produk</p>
                     </div>
-                    <button title="Hapus kategori"
+                    <button title="Hapus kategori" aria-label="Hapus kategori"
                       onClick={(e) => { e.stopPropagation(); mintaHapus("Hapus kategori?", k.nama, API_KATEGORI, k.id, () => filterKategori === k.nama && setFilterKategori("")); }}
-                      className="absolute right-2 top-2 hidden rounded-md p-1 text-slate-300 transition hover:bg-red-50 hover:text-red-600 focus:block group-hover:block">
+                      className="hapus-kat absolute right-1.5 top-1.5 rounded-md p-1.5 text-slate-300 transition hover:bg-red-50 hover:text-red-600">
                       <Trash2 size={14} />
                     </button>
                   </div>
@@ -325,9 +340,9 @@ export default function ProdukPage() {
 
           {/* DAFTAR PRODUK */}
           <section className={`${kartu} overflow-hidden`}>
-            <div className="flex flex-col gap-4 border-b border-slate-100 p-5 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-col gap-4 border-b border-slate-100 p-4 sm:p-5 lg:flex-row lg:items-center lg:justify-between">
               <div>
-                <h2 className="text-lg font-bold text-blue-900">Daftar produk</h2>
+                <h2 className="text-base font-bold text-blue-900 sm:text-lg">Daftar produk</h2>
                 <p className="mt-0.5 text-xs text-slate-400">Menampilkan {produkFilter.length} dari {produk.length} produk</p>
               </div>
               <div className="flex flex-col gap-3 sm:flex-row">
@@ -345,7 +360,8 @@ export default function ProdukPage() {
               </div>
             </div>
 
-            <div className="overflow-x-auto">
+            {/* TABEL (md+) */}
+            <div className="hidden overflow-x-auto md:block">
               <table className="w-full min-w-[900px] text-left">
                 <thead>
                   <tr className="border-b-2 border-yellow-300 bg-blue-50/70 text-sm text-blue-900">
@@ -381,37 +397,60 @@ export default function ProdukPage() {
                             <span className={`h-1.5 w-1.5 rounded-full ${s.dot}`} />{s.label}
                           </span>
                         </td>
-                        <td className="px-5 py-4">
-                          <div className="flex justify-center gap-1">
-                            <button onClick={() => bukaProduk(p)} title="Edit produk" className="rounded-lg p-2 text-blue-700 transition hover:bg-blue-100"><Pencil size={17} /></button>
-                            <button onClick={() => mintaHapus("Hapus produk?", p.nama, API_PRODUK, p.id)} title="Hapus produk" className="rounded-lg p-2 text-red-600 transition hover:bg-red-100"><Trash2 size={17} /></button>
-                          </div>
-                        </td>
+                        <td className="px-5 py-4"><Aksi p={p} /></td>
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
-
-              {!memuat && tampil.length === 0 && (
-                <div className="py-16 text-center">
-                  <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-blue-50"><Package size={30} className="text-blue-300" /></div>
-                  <p className="text-sm font-medium text-slate-500">{search || filterKategori ? "Produk tidak ditemukan" : "Belum ada data produk"}</p>
-                  {!search && !filterKategori && <p className="mt-1 text-xs text-slate-400">Klik "Tambah produk" untuk menambahkan produk pertama.</p>}
-                </div>
-              )}
             </div>
 
-            <div className="flex flex-col gap-3 border-t border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            {/* KARTU (HP) */}
+            <div className="divide-y divide-slate-100 md:hidden">
+              {memuat && [0, 1, 2].map((i) => <div key={i} className="p-4"><div className="h-20 animate-pulse rounded-lg bg-slate-100" /></div>)}
+              {!memuat && tampil.map((p) => {
+                const s = getStatus(Number(p.stok));
+                return (
+                  <div key={p.id} className="p-4">
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-700 text-white"><Package size={17} /></div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-slate-800">{p.nama}</p>
+                        <p className="truncate font-mono text-xs font-semibold text-blue-800">{p.kode_produk}</p>
+                      </div>
+                      <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${s.cls}`}>
+                        <span className={`h-1.5 w-1.5 rounded-full ${s.dot}`} />{s.label}
+                      </span>
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+                      {p.kategori && <span className="rounded-md bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">{p.kategori}</span>}
+                      <span className="text-sm font-bold text-blue-900">Rp {Number(p.harga).toLocaleString("id-ID")}</span>
+                      <span className="rounded-full bg-yellow-100 px-2.5 py-0.5 text-xs font-bold text-yellow-800">Stok {p.stok}</span>
+                      <div className="ml-auto"><Aksi p={p} /></div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {!memuat && tampil.length === 0 && (
+              <div className="py-16 text-center">
+                <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-blue-50"><Package size={30} className="text-blue-300" /></div>
+                <p className="text-sm font-medium text-slate-500">{search || filterKategori ? "Produk tidak ditemukan" : "Belum ada data produk"}</p>
+                {!search && !filterKategori && <p className="mt-1 px-4 text-xs text-slate-400">Klik "Tambah produk" untuk menambahkan produk pertama.</p>}
+              </div>
+            )}
+
+            <div className="flex flex-col gap-3 border-t border-slate-100 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
               <p className="text-sm text-slate-500">
                 Menampilkan <b className="text-blue-900">{produkFilter.length ? (page - 1) * PER_PAGE + 1 : 0}–{Math.min(page * PER_PAGE, produkFilter.length)}</b> dari <b className="text-blue-900">{produkFilter.length}</b> data
               </p>
               <div className="flex items-center gap-1.5">
-                <button disabled={page === 1} onClick={() => setPage(page - 1)} className={`${btnPage} border border-slate-200 text-slate-500 hover:bg-blue-50 hover:text-blue-700`}><ChevronLeft size={17} /></button>
+                <button disabled={page === 1} onClick={() => setPage(page - 1)} aria-label="Halaman sebelumnya" className={`${btnPage} border border-slate-200 text-slate-500 hover:bg-blue-50 hover:text-blue-700`}><ChevronLeft size={17} /></button>
                 {halaman.map((n) => (
                   <button key={n} onClick={() => setPage(n)} className={`${btnPage} ${page === n ? "bg-blue-700 text-white shadow-md shadow-blue-100" : "border border-slate-200 text-slate-500 hover:bg-blue-50 hover:text-blue-700"}`}>{n}</button>
                 ))}
-                <button disabled={page === totalPage} onClick={() => setPage(page + 1)} className={`${btnPage} border border-slate-200 text-slate-500 hover:bg-blue-50 hover:text-blue-700`}><ChevronRight size={17} /></button>
+                <button disabled={page === totalPage} onClick={() => setPage(page + 1)} aria-label="Halaman berikutnya" className={`${btnPage} border border-slate-200 text-slate-500 hover:bg-blue-50 hover:text-blue-700`}><ChevronRight size={17} /></button>
               </div>
             </div>
           </section>
@@ -420,9 +459,9 @@ export default function ProdukPage() {
 
       {/* TOAST */}
       {toast && (
-        <div className="anim-toast fixed right-5 top-5 z-[200] flex max-w-sm items-start gap-3 rounded-xl border border-slate-100 bg-white p-4 shadow-2xl">
+        <div className="anim-toast fixed inset-x-3 top-3 z-[200] flex items-start gap-3 rounded-xl border border-slate-100 bg-white p-4 shadow-2xl sm:inset-x-auto sm:right-5 sm:top-5 sm:max-w-sm">
           {toast.ok ? <CheckCircle2 size={22} className="mt-0.5 shrink-0 text-blue-700" /> : <AlertCircle size={22} className="mt-0.5 shrink-0 text-red-600" />}
-          <div>
+          <div className="min-w-0">
             <p className="text-sm font-bold text-slate-800">{toast.ok ? "Berhasil" : "Gagal"}</p>
             <p className="mt-0.5 text-sm text-slate-500">{toast.pesan}</p>
           </div>
@@ -458,7 +497,7 @@ export default function ProdukPage() {
       {/* MODAL KONFIRMASI HAPUS */}
       {konfirmasi && (
         <Overlay>
-          <div className="anim-modal w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-2xl">
+          <div className="anim-modal w-full max-w-sm rounded-2xl bg-white p-5 text-center shadow-2xl sm:p-6">
             <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-red-50"><Trash2 size={26} className="text-red-600" /></div>
             <h3 className="text-lg font-bold text-blue-900">{konfirmasi.judul}</h3>
             <p className="mt-2 text-sm leading-relaxed text-slate-500">{konfirmasi.isi}</p>

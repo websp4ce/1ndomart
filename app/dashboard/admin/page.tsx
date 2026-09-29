@@ -1,12 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import SidebarAdmin from "@/app/components/SidebarAdmin";
 import {
   ShoppingCart, Package, Warehouse, BarChart3, ArrowUpRight, ClipboardCheck, XCircle, RotateCcw,
-  Boxes, RefreshCw, Coins, Receipt, Hourglass, Building2, CalendarDays, LogOut, AlertTriangle,
+  Boxes, RefreshCw, Coins, Receipt, Hourglass, Building2, CalendarDays, LogOut, AlertTriangle, Menu, X,
 } from "lucide-react";
 
 const STOK_MINIMUM = 20;
@@ -66,19 +66,19 @@ const Garis = ({ className = "" }: { className?: string }) => (
 );
 
 const Panel = ({ judul, ket, href, delay = 0, children }: { judul: string; ket?: string; href?: string; delay?: number; children: ReactNode }) => (
-  <section className={`a-naik ${kartu} overflow-hidden`} style={{ animationDelay: `${delay}ms` }}>
-    <div className="flex items-start justify-between gap-3 border-b border-slate-100 p-5">
-      <div>
-        <h2 className="text-lg font-bold text-blue-900">{judul}</h2>
+  <section className={`a-naik ${kartu} min-w-0 overflow-hidden`} style={{ animationDelay: `${delay}ms` }}>
+    <div className="flex items-start justify-between gap-3 border-b border-slate-100 p-4 sm:p-5">
+      <div className="min-w-0">
+        <h2 className="text-base font-bold text-blue-900 sm:text-lg">{judul}</h2>
         {ket && <p className="mt-0.5 text-xs text-slate-400">{ket}</p>}
       </div>
       {href && (
-        <Link href={href} className="flex shrink-0 items-center gap-1 text-xs font-semibold text-blue-700 hover:text-blue-900">
+        <Link href={href} className="flex shrink-0 items-center gap-1 py-1 text-xs font-semibold text-blue-700 hover:text-blue-900">
           Buka <ArrowUpRight size={14} />
         </Link>
       )}
     </div>
-    <div className="p-5">{children}</div>
+    <div className="p-4 sm:p-5">{children}</div>
   </section>
 );
 
@@ -86,12 +86,14 @@ const Panel = ({ judul, ket, href, delay = 0, children }: { judul: string; ket?:
 
 export default function AdminDashboard() {
   const router = useRouter();
+  const pathname = usePathname();
   const [d, setD] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(true);
   const [sekarang, setSekarang] = useState<Date | null>(null);
   const [namaUser, setNamaUser] = useState("Administrator");
   const [konfirmasi, setKonfirmasi] = useState(false);
   const [keluarLoading, setKeluarLoading] = useState(false);
+  const [menuBuka, setMenuBuka] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -118,12 +120,25 @@ export default function AdminDashboard() {
     load();
   }, [load]);
 
+  // tutup menu HP saat pindah halaman
+  useEffect(() => setMenuBuka(false), [pathname]);
+
+  // Escape menutup dialog / menu, dan kunci scroll saat overlay terbuka
   useEffect(() => {
-    if (!konfirmasi) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !keluarLoading && setKonfirmasi(false);
+    if (!konfirmasi && !menuBuka) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (konfirmasi && !keluarLoading) setKonfirmasi(false);
+      else setMenuBuka(false);
+    };
     document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [konfirmasi, keluarLoading]);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [konfirmasi, menuBuka, keluarLoading]);
 
   async function logout() {
     setKeluarLoading(true);
@@ -187,33 +202,64 @@ export default function AdminDashboard() {
   ];
 
   return (
-    <div className="flex min-h-screen bg-white text-slate-800">
+    <div className="flex min-h-screen overflow-x-clip bg-white text-slate-800">
       <style>{`
         @keyframes naik { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
         @keyframes muncul { from { opacity: 0; transform: translateY(12px) scale(.98); } to { opacity: 1; transform: none; } }
+        @keyframes geser { from { transform: translateX(-100%); } to { transform: none; } }
         .a-naik { animation: naik .5s cubic-bezier(.22,1,.36,1) both; }
         .a-modal { animation: muncul .22s ease-out; }
-        @media (prefers-reduced-motion: reduce) { .a-naik, .a-modal { animation: none; } }
+        .a-geser { animation: geser .25s ease-out; }
+        @media (prefers-reduced-motion: reduce) { .a-naik, .a-modal, .a-geser { animation: none; } }
       `}</style>
 
-      <SidebarAdmin />
+      {/* SIDEBAR: tetap di layar besar (lg+), berupa drawer di HP/tablet */}
+      <div className="hidden shrink-0 lg:sticky lg:top-0 lg:block lg:h-screen lg:w-56 lg:overflow-y-auto">
+        <SidebarAdmin />
+      </div>
+
+      {menuBuka && (
+        <div className="fixed inset-0 z-[90] lg:hidden">
+          <div className="absolute inset-0 bg-blue-950/50 backdrop-blur-[2px]" onClick={() => setMenuBuka(false)} />
+          <div className="a-geser absolute inset-y-0 left-0 flex w-64 max-w-[80vw] flex-col overflow-y-auto bg-white shadow-2xl">
+            <button
+              onClick={() => setMenuBuka(false)}
+              aria-label="Tutup menu"
+              className="absolute right-2 top-2 z-10 flex h-10 w-10 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100"
+            >
+              <X size={20} />
+            </button>
+            <SidebarAdmin onNavigate={() => setMenuBuka(false)} />
+          </div>
+        </div>
+      )}
 
       <main className="min-w-0 flex-1">
         {/* HEADER */}
         <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur-xl">
           <Garis className="!h-1" />
-          <div className="flex h-16 items-center justify-between gap-4 px-5 sm:px-8">
-            <div className="flex items-center gap-2.5 text-sm text-slate-500">
-              <CalendarDays size={17} className="text-blue-700" />
-              <span className="hidden sm:inline">
+          <div className="flex h-14 items-center justify-between gap-3 px-3 sm:h-16 sm:gap-4 sm:px-8">
+            <div className="flex min-w-0 items-center gap-2 text-sm text-slate-500 sm:gap-2.5">
+              <button
+                onClick={() => setMenuBuka(true)}
+                aria-label="Buka menu"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-blue-900 transition hover:bg-slate-100 focus:outline-none focus:ring-4 focus:ring-blue-100 lg:hidden"
+              >
+                <Menu size={22} />
+              </button>
+              <CalendarDays size={17} className="hidden shrink-0 text-blue-700 sm:block" />
+              <span className="hidden truncate md:inline">
                 {sekarang?.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" }) || " "}
               </span>
-              <span className="font-semibold text-blue-900 sm:hidden">Dashboard Admin</span>
+              <span className="hidden truncate sm:inline md:hidden">
+                {sekarang?.toLocaleDateString("id-ID", { weekday: "short", day: "numeric", month: "short", year: "numeric" }) || " "}
+              </span>
+              <span className="truncate font-semibold text-blue-900 sm:hidden">Dashboard Admin</span>
             </div>
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-700 text-sm font-bold text-white ring-2 ring-yellow-400 ring-offset-2">{inisial}</div>
-              <div className="hidden leading-tight sm:block">
-                <p className="text-sm font-bold text-blue-900">{namaUser}</p>
+            <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-700 text-sm font-bold text-white ring-2 ring-yellow-400 ring-offset-2 sm:h-10 sm:w-10">{inisial}</div>
+              <div className="hidden max-w-[10rem] leading-tight md:block">
+                <p className="truncate text-sm font-bold text-blue-900">{namaUser}</p>
                 <p className="text-xs text-slate-400">Admin</p>
               </div>
               <button
@@ -228,24 +274,24 @@ export default function AdminDashboard() {
           </div>
         </header>
 
-        <div className="mx-auto max-w-[1320px] space-y-8 px-4 py-8 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-[1320px] space-y-6 px-3 py-5 sm:space-y-8 sm:px-6 sm:py-8 lg:px-8">
           {gagal > 0 && (
-            <div role="alert" className="flex items-center gap-3 rounded-2xl border border-yellow-300 bg-yellow-50 px-5 py-3 text-sm text-yellow-800">
+            <div role="alert" className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl border border-yellow-300 bg-yellow-50 px-4 py-3 text-sm text-yellow-800 sm:px-5">
               <AlertTriangle size={17} className="shrink-0" />
-              {gagal} sumber data tidak dapat dimuat.
-              <button onClick={load} className="ml-auto font-semibold underline underline-offset-4">Muat ulang</button>
+              <span>{gagal} sumber data tidak dapat dimuat.</span>
+              <button onClick={load} className="ml-auto py-1 font-semibold underline underline-offset-4">Muat ulang</button>
             </div>
           )}
 
           {/* HERO */}
-          <section className="a-naik relative overflow-hidden rounded-3xl bg-gradient-to-br from-blue-900 via-blue-800 to-blue-700 px-7 py-8 text-white shadow-xl shadow-blue-100">
+          <section className="a-naik relative overflow-hidden rounded-2xl bg-gradient-to-br from-blue-900 via-blue-800 to-blue-700 px-4 py-6 text-white shadow-xl shadow-blue-100 sm:rounded-3xl sm:px-7 sm:py-8">
             <div className="pointer-events-none absolute -right-16 -top-20 h-64 w-64 rounded-full bg-yellow-400/20" />
             <div className="pointer-events-none absolute -bottom-24 right-40 h-56 w-56 rounded-full bg-red-500/20" />
             <div className="relative">
-              <div className="flex flex-wrap items-start justify-between gap-5">
-                <div>
+              <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between sm:gap-5">
+                <div className="min-w-0">
                   <p className="text-xs text-blue-200">Admin › Dashboard</p>
-                  <h1 className="mt-2 text-3xl font-bold tracking-tight md:text-4xl">{sapaan}, Admin</h1>
+                  <h1 className="mt-2 text-2xl font-bold tracking-tight sm:text-3xl md:text-4xl">{sapaan}, Admin</h1>
                   <p className="mt-2 max-w-lg text-sm text-blue-100">
                     {loading ? "Memuat data terbaru..." : habis + menipis === 0 ? "Seluruh stok berada di level aman." : `${habis} produk habis dan ${menipis} produk menipis perlu direstok.`}
                   </p>
@@ -253,21 +299,21 @@ export default function AdminDashboard() {
                 <button
                   onClick={load}
                   disabled={loading}
-                  className="flex items-center gap-2 rounded-xl bg-yellow-400 px-6 py-3.5 text-sm font-bold text-blue-900 shadow-lg shadow-blue-950/20 transition hover:bg-yellow-300 focus:outline-none focus:ring-4 focus:ring-yellow-200/60 disabled:opacity-70"
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-yellow-400 px-6 py-3 text-sm font-bold text-blue-900 shadow-lg shadow-blue-950/20 transition hover:bg-yellow-300 focus:outline-none focus:ring-4 focus:ring-yellow-200/60 disabled:opacity-70 sm:w-auto sm:py-3.5"
                 >
                   <RefreshCw size={17} strokeWidth={2.5} className={loading ? "animate-spin" : ""} />
                   {loading ? "Memuat..." : "Muat ulang"}
                 </button>
               </div>
 
-              <div className="mt-7 grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <div className="mt-5 grid grid-cols-2 gap-2.5 sm:mt-7 sm:gap-3 lg:grid-cols-4">
                 {hero.map(({ label, nilai, icon: Icon }) => (
-                  <div key={label} className="rounded-2xl border border-white/15 bg-white/10 p-4 backdrop-blur">
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm text-blue-100">{label}</p>
-                      <Icon size={17} className="text-yellow-300" />
+                  <div key={label} className="min-w-0 rounded-2xl border border-white/15 bg-white/10 p-3 backdrop-blur sm:p-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="truncate text-xs text-blue-100 sm:text-sm">{label}</p>
+                      <Icon size={17} className="shrink-0 text-yellow-300" />
                     </div>
-                    <p className="mt-2 truncate text-2xl font-bold tracking-tight md:text-3xl">{loading ? "..." : nilai}</p>
+                    <p className="mt-2 truncate text-lg font-bold tracking-tight sm:text-2xl md:text-3xl">{loading ? "..." : nilai}</p>
                   </div>
                 ))}
               </div>
@@ -275,34 +321,34 @@ export default function AdminDashboard() {
           </section>
 
           {/* PERLU PERHATIAN */}
-          <section className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">
+          <section className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 xl:grid-cols-5">
             {chips.map(({ label, key, href, icon: Icon, tone }, i) => (
               <Link
                 key={key}
                 href={href}
                 style={{ animationDelay: `${100 + i * 70}ms` }}
-                className={`a-naik group ${kartu} flex items-center gap-3 p-4 transition hover:-translate-y-1 hover:border-blue-200 focus:outline-none focus:ring-4 focus:ring-blue-100`}
+                className={`a-naik group ${kartu} flex min-w-0 items-center gap-2.5 p-3 transition hover:-translate-y-1 hover:border-blue-200 focus:outline-none focus:ring-4 focus:ring-blue-100 sm:gap-3 sm:p-4 ${i === chips.length - 1 ? "col-span-2 md:col-span-1" : ""}`}
               >
-                <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl shadow-md ${tone}`}><Icon size={19} /></span>
+                <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl shadow-md sm:h-11 sm:w-11 ${tone}`}><Icon size={19} /></span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-xs text-slate-500">{label}</span>
-                  <span className="block text-2xl font-bold text-blue-900">{loading ? "..." : d[key] === null ? "–" : angka(arr(d[key]).length)}</span>
+                  <span className="block text-xl font-bold text-blue-900 sm:text-2xl">{loading ? "..." : d[key] === null ? "–" : angka(arr(d[key]).length)}</span>
                 </span>
-                <ArrowUpRight size={16} className="text-slate-300 transition group-hover:text-blue-700" />
+                <ArrowUpRight size={16} className="shrink-0 text-slate-300 transition group-hover:text-blue-700" />
               </Link>
             ))}
           </section>
 
           {/* PENJUALAN + STOK */}
-          <div className="grid gap-6 xl:grid-cols-[1.4fr_1fr]">
+          <div className="grid gap-4 sm:gap-6 xl:grid-cols-[1.4fr_1fr]">
             <Panel judul="Penjualan 7 hari terakhir" ket={`${angka(tujuhHari.reduce((s, h) => s + h.n, 0))} transaksi, total ${rupiah(totalMinggu)}`} href="/transaksi" delay={200}>
               {d.trx === null && !loading ? (
                 <p className="py-16 text-center text-sm text-slate-400">Data transaksi tidak dapat dimuat.</p>
               ) : (
-                <div className="flex h-56 items-end gap-2 sm:gap-4">
+                <div className="flex h-48 items-end gap-1 sm:h-56 sm:gap-4">
                   {tujuhHari.map((h) => (
-                    <div key={h.label} title={`${rupiah(h.total)} (${h.n} transaksi)`} className="flex h-full flex-1 flex-col items-center justify-end">
-                      <span className="mb-1.5 text-[11px] font-bold text-blue-900">
+                    <div key={h.label} title={`${rupiah(h.total)} (${h.n} transaksi)`} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end">
+                      <span className="mb-1.5 max-w-full truncate text-[9px] font-bold text-blue-900 sm:text-[11px]">
                         {h.total >= 1e6 ? `${(h.total / 1e6).toLocaleString("id-ID", { maximumFractionDigits: 1 })} jt` : h.total >= 1e3 ? `${Math.round(h.total / 1e3)} rb` : h.total > 0 ? h.total : ""}
                       </span>
                       <div className="flex w-full flex-1 items-end justify-center">
@@ -311,7 +357,7 @@ export default function AdminDashboard() {
                           style={{ height: loading ? "0%" : `${Math.max((h.total / maxHari) * 100, 3)}%` }}
                         />
                       </div>
-                      <span className={`mt-2 text-xs font-semibold ${h.hariIni ? "text-blue-900" : "text-slate-400"}`}>{h.label}</span>
+                      <span className={`mt-2 text-[11px] font-semibold sm:text-xs ${h.hariIni ? "text-blue-900" : "text-slate-400"}`}>{h.label}</span>
                     </div>
                   ))}
                 </div>
@@ -324,7 +370,7 @@ export default function AdminDashboard() {
                   <span key={s.label} className={`${s.bar} transition-all duration-700`} style={{ width: `${stok.length ? (s.n / stok.length) * 100 : 0}%` }} />
                 ))}
               </div>
-              <div className="mt-3 flex justify-between text-xs">
+              <div className="mt-3 flex flex-wrap justify-between gap-x-4 gap-y-2 text-xs">
                 {segmen.map((s) => (
                   <span key={s.label} className="flex items-center gap-1.5 font-semibold text-slate-600">
                     <span className={`h-2.5 w-2.5 rounded-full ${s.dot}`} /> {s.label} <b className="text-blue-900">{angka(s.n)}</b>
@@ -332,7 +378,7 @@ export default function AdminDashboard() {
                 ))}
               </div>
 
-              <p className="mb-1 mt-6 text-sm font-semibold text-slate-500">Perlu direstok</p>
+              <p className="mb-1 mt-5 text-sm font-semibold text-slate-500 sm:mt-6">Perlu direstok</p>
               {restok.length === 0 ? (
                 <p className="py-6 text-center text-sm text-slate-400">{loading ? "Memuat data..." : "Tidak ada produk yang perlu direstok."}</p>
               ) : (
@@ -341,7 +387,7 @@ export default function AdminDashboard() {
                     <li key={`${p.produk_id ?? p.id}-${i}`} className="flex items-center justify-between gap-3 py-2.5">
                       <div className="min-w-0">
                         <p className="truncate text-sm font-semibold text-slate-800">{p.nama || "Produk tanpa nama"}</p>
-                        <p className="font-mono text-xs text-slate-400">{p.kode_produk || "-"}</p>
+                        <p className="truncate font-mono text-xs text-slate-400">{p.kode_produk || "-"}</p>
                       </div>
                       <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${jml(p) <= 0 ? "bg-red-50 text-red-600" : "bg-yellow-100 text-yellow-800"}`}>
                         {jml(p) <= 0 ? "Habis" : `${jml(p)} unit`}
@@ -354,9 +400,9 @@ export default function AdminDashboard() {
           </div>
 
           {/* WAREHOUSE + MODUL */}
-          <div className="grid gap-6 xl:grid-cols-2">
+          <div className="grid gap-4 sm:gap-6 xl:grid-cols-2">
             <Panel judul="Aktivitas warehouse" ket="Progres pengadaan dan penerimaan" href="/warehouse/pengadaan-penerimaan" delay={360}>
-              <div className="space-y-5">
+              <div className="space-y-4 sm:space-y-5">
                 {[
                   { label: "Purchase order", list: po, bar: "bg-blue-700" },
                   { label: "Penerimaan barang", list: pn, bar: "bg-red-600" },
@@ -364,13 +410,13 @@ export default function AdminDashboard() {
                   const sel = selesai(list);
                   const pct = list.length ? Math.round((sel / list.length) * 100) : 0;
                   return (
-                    <div key={label} className="rounded-2xl border border-slate-100 bg-blue-50/40 p-4">
-                      <div className="flex items-end justify-between">
-                        <div>
-                          <p className="text-xs text-slate-500">{label}</p>
-                          <p className="mt-1 text-2xl font-bold text-blue-900">{angka(list.length)}</p>
+                    <div key={label} className="rounded-2xl border border-slate-100 bg-blue-50/40 p-3.5 sm:p-4">
+                      <div className="flex items-end justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-xs text-slate-500">{label}</p>
+                          <p className="mt-1 text-xl font-bold text-blue-900 sm:text-2xl">{angka(list.length)}</p>
                         </div>
-                        <p className="text-sm font-semibold text-blue-700">{pct}% selesai</p>
+                        <p className="shrink-0 text-sm font-semibold text-blue-700">{pct}% selesai</p>
                       </div>
                       <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-white">
                         <div className={`h-full rounded-full ${bar} transition-all duration-700`} style={{ width: `${loading ? 0 : pct}%` }} />
@@ -383,16 +429,16 @@ export default function AdminDashboard() {
             </Panel>
 
             <Panel judul="Modul sistem" ket="Pilih modul untuk mengelola data" delay={440}>
-              <ul className="space-y-3">
+              <ul className="space-y-2.5 sm:space-y-3">
                 {modul.map(({ nama, ket, href, icon: Icon, tone }) => (
                   <li key={nama}>
-                    <Link href={href} className="group flex items-center gap-4 rounded-2xl border border-slate-100 p-3.5 transition hover:border-blue-200 hover:bg-blue-50/40 focus:outline-none focus:ring-4 focus:ring-blue-100">
-                      <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${tone}`}><Icon size={19} /></span>
+                    <Link href={href} className="group flex items-center gap-3 rounded-2xl border border-slate-100 p-3 transition hover:border-blue-200 hover:bg-blue-50/40 focus:outline-none focus:ring-4 focus:ring-blue-100 sm:gap-4 sm:p-3.5">
+                      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl sm:h-11 sm:w-11 ${tone}`}><Icon size={19} /></span>
                       <span className="min-w-0 flex-1">
                         <span className="block text-sm font-bold text-blue-900">{nama}</span>
                         <span className="block truncate text-xs text-slate-400">{ket}</span>
                       </span>
-                      <ArrowUpRight size={17} className="text-slate-300 transition group-hover:text-blue-700" />
+                      <ArrowUpRight size={17} className="shrink-0 text-slate-300 transition group-hover:text-blue-700" />
                     </Link>
                   </li>
                 ))}
@@ -405,20 +451,20 @@ export default function AdminDashboard() {
       {/* DIALOG LOGOUT (di luar header agar tidak terkurung backdrop-blur) */}
       {konfirmasi && (
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-blue-950/40 p-4 backdrop-blur-[2px]"
+          className="fixed inset-0 z-[100] flex items-end justify-center bg-blue-950/40 p-3 backdrop-blur-[2px] sm:items-center sm:p-4"
           onMouseDown={(e) => e.target === e.currentTarget && !keluarLoading && setKonfirmasi(false)}
         >
-          <div role="dialog" aria-modal="true" aria-labelledby="judul-logout" className="a-modal w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-2xl">
+          <div role="dialog" aria-modal="true" aria-labelledby="judul-logout" className="a-modal max-h-[90vh] w-full max-w-sm overflow-y-auto rounded-2xl bg-white shadow-2xl">
             <Garis />
-            <div className="p-6">
+            <div className="p-5 sm:p-6">
               <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-red-50 text-red-600"><LogOut size={26} /></div>
               <h2 id="judul-logout" className="mt-4 text-xl font-bold text-blue-900">Keluar dari akun?</h2>
               <p className="mt-1.5 text-sm text-slate-500">Anda perlu login lagi untuk melanjutkan.</p>
-              <div className="mt-6 flex justify-end gap-2">
+              <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                 <button onClick={() => setKonfirmasi(false)} disabled={keluarLoading} className="rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-500 transition hover:bg-slate-100 disabled:opacity-50">
                   Batal
                 </button>
-                <button onClick={logout} disabled={keluarLoading} className="flex items-center gap-2 rounded-xl bg-red-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-red-100 transition hover:bg-red-700 disabled:opacity-60">
+                <button onClick={logout} disabled={keluarLoading} className="flex items-center justify-center gap-2 rounded-xl bg-red-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-red-100 transition hover:bg-red-700 disabled:opacity-60">
                   <LogOut size={15} /> {keluarLoading ? "Keluar..." : "Ya, keluar"}
                 </button>
               </div>

@@ -17,6 +17,7 @@ import {
   RotateCcw,
   ArrowLeftRight,
   LogOut,
+  Menu,
 } from "lucide-react";
 
 type Produk = {
@@ -97,6 +98,7 @@ export default function DashboardInventoryPage() {
 
   const [konfirmasi, setKonfirmasi] = useState(false);
   const [keluarLoading, setKeluarLoading] = useState(false);
+  const [menuBuka, setMenuBuka] = useState(false);
 
   const [stokMinimumData, setStokMinimumData] = useState<ModuleData>(awal);
   const [expiredData, setExpiredData] = useState<ModuleData>(awal);
@@ -294,31 +296,38 @@ export default function DashboardInventoryPage() {
         @media (prefers-reduced-motion: reduce) { .a-naik, .a-melayang, .a-modal { animation: none; } }
       `}</style>
 
-      {/* SIDEBAR */}
-      <aside className="hidden w-[235px] shrink-0 self-stretch border-r border-slate-200 bg-white lg:block [&>*]:!static [&>*]:!border-r-0 [&_.fixed]:!static [&_.sticky]:!static">
-        <SidebarInventory />
-      </aside>
+      {/* SIDEBAR: tetap di lg+, drawer di HP/tablet (tombol ☰ ada di header) */}
+      <SidebarInventory open={menuBuka} onClose={() => setMenuBuka(false)} />
 
       <main className="min-w-0 flex-1">
         {/* ================= HEADER ================= */}
         <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur-xl">
           <Garis className="!h-1" />
 
-          <div className="flex h-16 items-center justify-between gap-4 px-5 lg:px-8">
-            {/* Kiri: tanggal */}
-            <div className="flex items-center gap-2.5 text-sm text-slate-500">
-              <CalendarDays size={17} className="text-blue-700" />
-              <span className="hidden sm:inline">{tanggal || " "}</span>
-              <span className="font-semibold text-blue-900 sm:hidden">Inventory</span>
+          <div className="flex h-14 items-center justify-between gap-2 px-3 sm:h-16 sm:gap-4 sm:px-5 lg:px-8">
+            {/* Kiri: menu + tanggal */}
+            <div className="flex min-w-0 items-center gap-2 text-sm text-slate-500 sm:gap-2.5">
+              <button
+                type="button"
+                onClick={() => setMenuBuka(true)}
+                aria-label="Buka menu"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-blue-900 transition hover:bg-slate-100 focus:outline-none focus:ring-4 focus:ring-blue-100 lg:hidden"
+              >
+                <Menu size={22} />
+              </button>
+              <CalendarDays size={17} className="hidden shrink-0 text-blue-700 sm:block" />
+              <span className="hidden truncate sm:inline">{tanggal || " "}</span>
+              <span className="truncate font-semibold text-blue-900 sm:hidden">Inventory</span>
             </div>
 
             {/* Kanan: refresh + profil + logout */}
-            <div className="flex items-center gap-4">
+            <div className="flex shrink-0 items-center gap-2 sm:gap-4">
               <button
                 type="button"
                 onClick={loadData}
                 disabled={memuat}
-                className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 disabled:opacity-60"
+                aria-label="Segarkan"
+                className="flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 disabled:opacity-60 sm:px-3.5"
               >
                 <RefreshCw size={16} className={memuat ? "animate-spin" : ""} />
                 <span className="hidden sm:inline">{memuat ? "Memuat..." : "Segarkan"}</span>
@@ -326,12 +335,12 @@ export default function DashboardInventoryPage() {
 
               <div className="hidden h-8 w-px bg-slate-200 sm:block" />
 
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-700 text-sm font-bold text-white ring-2 ring-yellow-400 ring-offset-2">
+              <div className="flex items-center gap-2 sm:gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-700 text-sm font-bold text-white ring-2 ring-yellow-400 ring-offset-2 sm:h-10 sm:w-10">
                   {namaUser.charAt(0).toUpperCase()}
                 </div>
-                <div className="hidden leading-tight sm:block">
-                  <p className="text-sm font-bold text-blue-900">{namaUser}</p>
+                <div className="hidden max-w-[10rem] leading-tight md:block">
+                  <p className="truncate text-sm font-bold text-blue-900">{namaUser}</p>
                   <p className="text-xs text-slate-400">Inventory</p>
                 </div>
                 <button
@@ -348,31 +357,31 @@ export default function DashboardInventoryPage() {
           </div>
         </header>
 
-        <div className="mx-auto max-w-[1400px] space-y-8 px-4 py-8 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-[1400px] space-y-6 px-3 py-5 sm:space-y-8 sm:px-6 sm:py-8 lg:px-8">
           {/* ================= HERO + RINGKASAN ================= */}
-          <section className="a-naik relative overflow-hidden rounded-3xl bg-gradient-to-br from-blue-900 via-blue-800 to-blue-700 px-7 py-8 text-white shadow-xl shadow-blue-100">
+          <section className="a-naik relative overflow-hidden rounded-2xl bg-gradient-to-br from-blue-900 via-blue-800 to-blue-700 px-4 py-6 text-white shadow-xl shadow-blue-100 sm:rounded-3xl sm:px-7 sm:py-8">
             <div className="pointer-events-none absolute -right-16 -top-20 h-64 w-64 rounded-full bg-yellow-400/20" />
             <div className="pointer-events-none absolute -bottom-24 right-40 h-56 w-56 rounded-full bg-red-500/20" />
             <Boxes className="a-melayang pointer-events-none absolute bottom-6 right-8 hidden h-28 w-28 text-white/15 sm:block" />
 
             <div className="relative">
-              <h1 className="text-3xl font-bold tracking-tight md:text-4xl">Dashboard Inventory</h1>
+              <h1 className="text-2xl font-bold tracking-tight sm:text-3xl md:text-4xl">Dashboard Inventory</h1>
               <p className="mt-2 max-w-lg text-sm leading-relaxed text-blue-100">
                 Ringkasan seluruh aktivitas dan data inventory Indomart.
               </p>
 
               {/* Angka ringkasan */}
-              <div className="mt-7 grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <div className="mt-5 grid grid-cols-2 gap-2.5 sm:mt-7 sm:gap-3 lg:grid-cols-4">
                 {ringkasan.map(({ label, nilai, icon: Icon }) => (
                   <div
                     key={label}
-                    className="rounded-2xl border border-white/15 bg-white/10 p-4 backdrop-blur"
+                    className="min-w-0 rounded-2xl border border-white/15 bg-white/10 p-3 backdrop-blur sm:p-4"
                   >
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm text-blue-100">{label}</p>
-                      <Icon size={17} className="text-yellow-300" />
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="truncate text-xs text-blue-100 sm:text-sm">{label}</p>
+                      <Icon size={17} className="shrink-0 text-yellow-300" />
                     </div>
-                    <p className="mt-2 text-3xl font-bold tracking-tight">
+                    <p className="mt-2 truncate text-2xl font-bold tracking-tight sm:text-3xl">
                       {loadingProduk ? "..." : formatNumber(nilai)}
                     </p>
                   </div>
@@ -380,10 +389,10 @@ export default function DashboardInventoryPage() {
               </div>
 
               {/* Kesehatan stok */}
-              <div className="mt-6">
-                <div className="mb-2 flex items-center justify-between text-xs text-blue-100">
+              <div className="mt-5 sm:mt-6">
+                <div className="mb-2 flex items-center justify-between gap-3 text-xs text-blue-100">
                   <span>Produk dengan stok aman (di atas 20 unit)</span>
-                  <span className="font-semibold text-white">{loadingProduk ? "..." : `${persenAman}%`}</span>
+                  <span className="shrink-0 font-semibold text-white">{loadingProduk ? "..." : `${persenAman}%`}</span>
                 </div>
                 <div className="h-2 overflow-hidden rounded-full bg-white/15">
                   <div
@@ -398,11 +407,11 @@ export default function DashboardInventoryPage() {
           {/* ================= PERLU PERHATIAN ================= */}
           <section>
             <div className="a-naik mb-4" style={{ animationDelay: "120ms" }}>
-              <h2 className="text-xl font-bold text-blue-900">Perlu perhatian</h2>
+              <h2 className="text-lg font-bold text-blue-900 sm:text-xl">Perlu perhatian</h2>
               <p className="mt-0.5 text-sm text-slate-400">Pantau barang yang membutuhkan tindakan.</p>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+            <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 xl:grid-cols-5">
               {perhatian.map((k, i) => {
                 const Icon = k.icon;
                 const jumlah = k.data.items.length;
@@ -414,22 +423,22 @@ export default function DashboardInventoryPage() {
                     type="button"
                     onClick={() => router.push(k.path)}
                     style={{ animationDelay: `${180 + i * 80}ms` }}
-                    className="a-naik group flex flex-col rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-[0_4px_20px_rgba(15,23,42,0.05)] transition hover:-translate-y-1 hover:border-blue-200 hover:shadow-[0_12px_30px_rgba(30,64,175,0.10)] focus:outline-none focus:ring-4 focus:ring-blue-100"
+                    className={`a-naik group flex min-w-0 flex-col rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-[0_4px_20px_rgba(15,23,42,0.05)] transition hover:-translate-y-1 hover:border-blue-200 hover:shadow-[0_12px_30px_rgba(30,64,175,0.10)] focus:outline-none focus:ring-4 focus:ring-blue-100 sm:p-5 ${i === perhatian.length - 1 ? "col-span-2 md:col-span-1" : ""}`}
                   >
                     <div className="flex items-start justify-between">
-                      <div className={`flex h-11 w-11 items-center justify-center rounded-2xl shadow-md ${k.tile}`}>
+                      <div className={`flex h-10 w-10 items-center justify-center rounded-2xl shadow-md sm:h-11 sm:w-11 ${k.tile}`}>
                         <Icon size={20} />
                       </div>
                       <ArrowUpRight size={17} className="text-slate-300 transition group-hover:text-blue-700" />
                     </div>
 
-                    <p className="mt-5 text-sm font-semibold text-slate-600">{k.label}</p>
+                    <p className="mt-4 text-sm font-semibold text-slate-600 sm:mt-5">{k.label}</p>
 
-                    <p className="mt-1 text-3xl font-bold tracking-tight text-blue-900">
+                    <p className="mt-1 text-2xl font-bold tracking-tight text-blue-900 sm:text-3xl">
                       {k.data.loading ? "..." : k.data.error ? "-" : formatNumber(jumlah)}
                     </p>
 
-                    <div className="mt-2 flex items-center gap-2">
+                    <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
                       <p className="text-xs text-slate-400">{k.hint}</p>
                       {perluCek && (
                         <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${k.chip}`}>
@@ -446,24 +455,24 @@ export default function DashboardInventoryPage() {
           {/* ================= MENU INVENTORY ================= */}
           <section>
             <div className="a-naik mb-4" style={{ animationDelay: "520ms" }}>
-              <h2 className="text-xl font-bold text-blue-900">Menu inventory</h2>
+              <h2 className="text-lg font-bold text-blue-900 sm:text-xl">Menu inventory</h2>
               <p className="mt-0.5 text-sm text-slate-400">Akses seluruh pengelolaan inventory.</p>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3 xl:grid-cols-4">
               {menuInventory.map(({ label, path, icon: Icon }, i) => (
                 <button
                   key={path}
                   type="button"
                   onClick={() => router.push(path)}
                   style={{ animationDelay: `${580 + i * 60}ms` }}
-                  className="a-naik group flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-left transition hover:border-blue-300 hover:bg-blue-50/50 focus:outline-none focus:ring-4 focus:ring-blue-100"
+                  className="a-naik group flex min-w-0 items-center gap-2.5 rounded-2xl border border-slate-200 bg-white p-3 text-left transition hover:border-blue-300 hover:bg-blue-50/50 focus:outline-none focus:ring-4 focus:ring-blue-100 sm:gap-3 sm:p-4"
                 >
-                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700 transition group-hover:bg-blue-700 group-hover:text-white">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700 transition group-hover:bg-blue-700 group-hover:text-white sm:h-11 sm:w-11">
                     <Icon size={20} />
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-semibold text-slate-700">{label}</span>
+                    <span className="block break-words text-sm font-semibold leading-tight text-slate-700">{label}</span>
                     <span className="mt-0.5 flex items-center gap-1 text-xs text-slate-400">
                       Buka halaman
                       <ArrowUpRight size={12} />
@@ -479,12 +488,12 @@ export default function DashboardInventoryPage() {
       {/* ================= DIALOG LOGOUT (di luar header agar tidak terkurung backdrop-blur) ================= */}
       {konfirmasi && (
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-blue-950/40 p-4 backdrop-blur-[2px]"
+          className="fixed inset-0 z-[100] flex items-end justify-center bg-blue-950/40 p-3 backdrop-blur-[2px] sm:items-center sm:p-4"
           onMouseDown={(e) => e.target === e.currentTarget && !keluarLoading && setKonfirmasi(false)}
         >
-          <div role="dialog" aria-modal="true" aria-labelledby="judul-logout" className="a-modal w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-2xl">
+          <div role="dialog" aria-modal="true" aria-labelledby="judul-logout" className="a-modal max-h-[90vh] w-full max-w-sm overflow-y-auto rounded-2xl bg-white shadow-2xl">
             <Garis />
-            <div className="p-6">
+            <div className="p-5 sm:p-6">
               <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-red-50 text-red-600">
                 <LogOut size={26} />
               </div>
@@ -493,7 +502,7 @@ export default function DashboardInventoryPage() {
                 Anda akan keluar dari dashboard inventory dan perlu login lagi untuk melanjutkan.
               </p>
 
-              <div className="mt-6 flex justify-end gap-2">
+              <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                 <button
                   type="button"
                   onClick={() => setKonfirmasi(false)}
@@ -506,7 +515,7 @@ export default function DashboardInventoryPage() {
                   type="button"
                   onClick={logout}
                   disabled={keluarLoading}
-                  className="flex items-center gap-2 rounded-xl bg-red-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-red-100 transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="flex items-center justify-center gap-2 rounded-xl bg-red-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-red-100 transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <LogOut size={15} /> {keluarLoading ? "Keluar..." : "Ya, keluar"}
                 </button>
